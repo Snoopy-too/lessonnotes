@@ -38,19 +38,61 @@ function writeLog($message) {
 }
 
 /**
+ * Get GitHub signature header (tries multiple methods for shared hosting compatibility)
+ */
+function getGitHubSignature() {
+    // Method 1: Standard $_SERVER
+    if (!empty($_SERVER['HTTP_X_HUB_SIGNATURE_256'])) {
+        return $_SERVER['HTTP_X_HUB_SIGNATURE_256'];
+    }
+
+    // Method 2: getallheaders() function
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        foreach ($headers as $name => $value) {
+            if (strtolower($name) === 'x-hub-signature-256') {
+                return $value;
+            }
+        }
+    }
+
+    // Method 3: Check for Apache-style header
+    if (!empty($_SERVER['REDIRECT_HTTP_X_HUB_SIGNATURE_256'])) {
+        return $_SERVER['REDIRECT_HTTP_X_HUB_SIGNATURE_256'];
+    }
+
+    // Method 4: Check apache_request_headers
+    if (function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        foreach ($headers as $name => $value) {
+            if (strtolower($name) === 'x-hub-signature-256') {
+                return $value;
+            }
+        }
+    }
+
+    return '';
+}
+
+/**
  * Verify GitHub webhook signature
  */
 function verifySignature($payload, $signature) {
     if (empty($signature)) {
+        writeLog('DEBUG: Signature is empty');
         return false;
     }
 
     $parts = explode('=', $signature);
     if (count($parts) !== 2 || $parts[0] !== 'sha256') {
+        writeLog('DEBUG: Signature format invalid: ' . $signature);
         return false;
     }
 
     $expected = hash_hmac('sha256', $payload, SECRET_TOKEN);
+    writeLog('DEBUG: Expected sig: ' . $expected);
+    writeLog('DEBUG: Received sig: ' . $parts[1]);
+
     return hash_equals($expected, $parts[1]);
 }
 
@@ -90,7 +132,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 // Get the payload and signature
 $payload = file_get_contents('php://input');
-$signature = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
+$signature = getGitHubSignature();
+
+// Debug logging
+writeLog('DEBUG: Payload length: ' . strlen($payload));
+writeLog('DEBUG: Signature found: ' . ($signature ? 'yes' : 'no'));
 
 // Verify the signature
 if (!verifySignature($payload, $signature)) {
