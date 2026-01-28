@@ -189,8 +189,12 @@ function adminLogin(string $password): bool {
     } else {
         // Migration: check config constant and migrate to database
         if ($password === ADMIN_PASSWORD) {
-            // Migrate password to database with hashing
-            setAdminPassword($pdo, $password);
+            // Try to migrate password to database with hashing (may fail if table doesn't exist yet)
+            try {
+                setAdminPassword($pdo, $password);
+            } catch (PDOException $e) {
+                // Table might not exist yet - that's OK, login still works
+            }
             $_SESSION['admin_logged_in'] = true;
             return true;
         }
