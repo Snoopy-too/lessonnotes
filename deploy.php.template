@@ -1,0 +1,136 @@
+<?php
+/**
+ * GitHub Webhook Deployment Script
+ *
+ * Place this file on your Bluehost server.
+ * DO NOT commit this to your repository (it's in .gitignore).
+ *
+ * Setup instructions:
+ * 1. Generate a secret: Run in terminal: openssl rand -hex 32
+ * 2. Replace SECRET_TOKEN below with your generated secret
+ * 3. Upload this file as deploy.php to your Bluehost site root
+ * 4. Go to GitHub repo Settings > Webhooks > Add webhook
+ * 5. Payload URL: https://yourdomain.com/deploy.php
+ * 6. Content type: application/json
+ * 7. Secret: paste the same secret you used in step 2
+ * 8. Events: Just the push event
+ * 9. Make sure deploy.php is executable and git is accessible via shell
+ */
+
+// SECURITY: Change this to your own secret!
+define('SECRET_TOKEN', 'iNaBrf5McYjlS0Mo7QXvRjI5TX5TnxCq');
+
+// Path to your web root (where the repo is cloned)
+define('REPO_PATH', '/home3/mxbttmmy/public_html/lessonnotes');
+
+// Branch to deploy
+define('BRANCH', 'main');
+
+// Log file for debugging
+define('LOG_FILE', __DIR__ . '/deploy.log');
+
+/**
+ * Write to log file
+ */
+function writeLog($message) {
+    $timestamp = date('Y-m-d H:i:s');
+    file_put_contents(LOG_FILE, "[$timestamp] $message\n", FILE_APPEND | LOCK_EX);
+}
+
+/**
+ * Verify GitHub webhook signature
+ */
+function verifySignature($payload, $signature) {
+    if (empty($signature)) {
+        return false;
+    }
+
+    $parts = explode('=', $signature);
+    if (count($parts) !== 2 || $parts[0] !== 'sha256') {
+        return false;
+    }
+
+    $expected = hash_hmac('sha256', $payload, SECRET_TOKEN);
+    return hash_equals($expected, $parts[1]);
+}
+
+/**
+ * Execute deployment
+ */
+function deploy() {
+    $output = [];
+    $return_var = 0;
+
+    // Change to repo directory and pull
+    $commands = [
+        'cd ' . escapeshellarg(REPO_PATH),
+        'git fetch origin ' . BRANCH,
+        'git reset --hard origin/' . BRANCH,
+    ];
+
+    $fullCommand = implode(' && ', $commands) . ' 2>&1';
+    exec($fullCommand, $output, $return_var);
+
+    return [
+        'success' => $return_var === 0,
+        'output' => implode("\n", $output),
+        'return_code' => $return_var
+    ];
+}
+
+// ============================================
+// Main execution
+// ============================================
+
+// Only accept POST requests
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    die('Method not allowed');
+}
+
+// Get the payload and signature
+$payload = file_get_contents('php://input');
+$signature = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
+
+// Verify the signature
+if (!verifySignature($payload, $signature)) {
+    writeLog('ERROR: Invalid signature');
+    http_response_code(403);
+    die('Invalid signature');
+}
+
+// Parse the payload
+$data = json_decode($payload, true);
+if ($data === null) {
+    writeLog('ERROR: Invalid JSON payload');
+    http_response_code(400);
+    die('Invalid payload');
+}
+
+// Check if this is a push to the correct branch
+$ref = $data['ref'] ?? '';
+$expectedRef = 'refs/heads/' . BRANCH;
+
+if ($ref !== $expectedRef) {
+    writeLog("INFO: Ignoring push to $ref (not $expectedRef)");
+    http_response_code(200);
+    die("Ignoring push to $ref");
+}
+
+// Log the push event
+$pusher = $data['pusher']['name'] ?? 'unknown';
+$commits = count($data['commits'] ?? []);
+writeLog("INFO: Received push from $pusher with $commits commit(s)");
+
+// Execute deployment
+$result = deploy();
+
+if ($result['success']) {
+    writeLog("SUCCESS: Deployment completed\n" . $result['output']);
+    http_response_code(200);
+    echo "Deployment successful";
+} else {
+    writeLog("ERROR: Deployment failed (code {$result['return_code']})\n" . $result['output']);
+    http_response_code(500);
+    echo "Deployment failed";
+}
