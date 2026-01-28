@@ -201,9 +201,9 @@ function adminLogin(string $password): bool {
 
 /**
  * Change admin password
- * Returns: true on success, string error message on failure
+ * @return bool|string true on success, string error message on failure
  */
-function changeAdminPassword(string $currentPassword, string $newPassword, string $confirmPassword): bool|string {
+function changeAdminPassword(string $currentPassword, string $newPassword, string $confirmPassword) {
     if (strlen($newPassword) < 8) {
         return 'New password must be at least 8 characters long.';
     }
