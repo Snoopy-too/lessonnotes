@@ -1,0 +1,20 @@
+# Sensitive configuration files
+config/database.php
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE/Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Deployment
+deploy.php

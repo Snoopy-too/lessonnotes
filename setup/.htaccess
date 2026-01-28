@@ -1,0 +1,9 @@
+# Deny all access to setup files after initial setup
+# Remove this file or comment out the rules if you need to run setup again
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

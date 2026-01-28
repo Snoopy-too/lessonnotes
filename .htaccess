@@ -1,0 +1,63 @@
+# Disable directory listing
+Options -Indexes
+
+# Security headers
+<IfModule mod_headers.c>
+    # Prevent MIME type sniffing
+    Header set X-Content-Type-Options "nosniff"
+
+    # Prevent clickjacking
+    Header set X-Frame-Options "SAMEORIGIN"
+
+    # Enable XSS filtering
+    Header set X-XSS-Protection "1; mode=block"
+
+    # Control referrer information
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Enforce HTTPS
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Content Security Policy - allow Google Fonts
+    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;"
+
+    # Permissions Policy
+    Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # Remove PHP version header
+    Header unset X-Powered-By
+</IfModule>
+
+# Block access to .git directory
+RedirectMatch 404 /\.git
+
+# Protect hidden files (dot-files)
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Protect sensitive files
+<FilesMatch "\.(env|ini|log|sh|sql|md|json)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# PHP settings for security (if allowed)
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag expose_php Off
+    php_flag session.use_strict_mode On
+    php_flag session.cookie_httponly On
+    php_value session.cookie_samesite Strict
+</IfModule>
