@@ -16,16 +16,9 @@ if (!$lesson) {
     exit;
 }
 
-// Pagination settings - smaller for mobile-friendly experience
-$perPage = 5;
-$currentPage = max(1, (int)($_GET['page'] ?? 1));
-$totalTranslations = countTranslationsForLesson($pdo, $lessonId);
-$pagination = getPaginationInfo($totalTranslations, $currentPage, $perPage);
-$currentPage = $pagination['current_page']; // Normalized
-$translations = getPaginatedTranslationsForLesson($pdo, $lessonId, $currentPage, $perPage);
-
-// Calculate the starting index for card numbers
-$startIndex = ($currentPage - 1) * $perPage;
+// Get all translations for this lesson (no pagination)
+$translations = getTranslationsForLesson($pdo, $lessonId);
+$totalTranslations = count($translations);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -337,106 +330,6 @@ $startIndex = ($currentPage - 1) * $perPage;
             transition: width 0.1s ease-out;
         }
 
-        /* Pagination styles - mobile-first */
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-top: 32px;
-            padding: 16px 0;
-            animation: fadeIn 0.6s ease-out 0.4s both;
-        }
-
-        .pagination-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            min-width: 44px;
-            height: 44px;
-            padding: 0 16px;
-            border-radius: 22px;
-            background: var(--paper-cream);
-            border: 1px solid transparent;
-            color: var(--ink-gray);
-            text-decoration: none;
-            font-size: 0.8125rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .pagination-btn:hover:not(.disabled),
-        .pagination-btn:focus:not(.disabled) {
-            background: var(--paper-white);
-            border-color: var(--paper-warm);
-            box-shadow: 0 2px 12px var(--shadow-soft);
-            color: var(--accent-indigo);
-        }
-
-        .pagination-btn:active:not(.disabled) {
-            transform: scale(0.95);
-        }
-
-        .pagination-btn.disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .pagination-btn svg {
-            width: 16px;
-            height: 16px;
-            flex-shrink: 0;
-        }
-
-        .pagination-btn .btn-text {
-            display: none;
-        }
-
-        .pagination-center {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .pagination-info {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 0.9375rem;
-            color: var(--ink-light);
-            text-align: center;
-        }
-
-        .pagination-info .current {
-            font-weight: 600;
-            color: var(--ink-black);
-        }
-
-        .pagination-dots {
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-        }
-
-        .pagination-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--paper-warm);
-            transition: all 0.3s ease;
-        }
-
-        .pagination-dot.active {
-            background: var(--accent-vermillion);
-            transform: scale(1.2);
-        }
-
-        .pagination-dot.near {
-            background: var(--ink-light);
-            opacity: 0.5;
-        }
-
         @media (min-width: 600px) {
             header {
                 padding: 32px 0 24px;
@@ -449,12 +342,6 @@ $startIndex = ($currentPage - 1) * $perPage;
             }
             .original-text {
                 font-size: 1.25rem;
-            }
-            .pagination-btn .btn-text {
-                display: inline;
-            }
-            .pagination-btn {
-                padding: 0 20px;
             }
         }
     </style>
@@ -492,7 +379,7 @@ $startIndex = ($currentPage - 1) * $perPage;
                 <div class="translation-list">
                     <?php foreach ($translations as $index => $translation): ?>
                     <article class="translation-card">
-                        <span class="card-number"><?= $startIndex + $index + 1 ?></span>
+                        <span class="card-number"><?= $index + 1 ?></span>
 
                         <div class="original-section">
                             <p class="field-label">Original</p>
@@ -514,48 +401,6 @@ $startIndex = ($currentPage - 1) * $perPage;
                     <?php endforeach; ?>
                 </div>
 
-                <?php if ($pagination['total_pages'] > 1): ?>
-                <nav class="pagination" aria-label="Translation navigation">
-                    <a href="?id=<?= $lessonId ?>&page=<?= $pagination['prev_page'] ?>"
-                       class="pagination-btn <?= !$pagination['has_prev'] ? 'disabled' : '' ?>"
-                       <?= !$pagination['has_prev'] ? 'aria-disabled="true" tabindex="-1"' : '' ?>
-                       aria-label="Previous page">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M15 18l-6-6 6-6"/>
-                        </svg>
-                        <span class="btn-text">Prev</span>
-                    </a>
-
-                    <div class="pagination-center">
-                        <span class="pagination-info">
-                            <span class="current"><?= $pagination['start_item'] ?>-<?= $pagination['end_item'] ?></span> of <?= $totalTranslations ?>
-                        </span>
-                        <div class="pagination-dots">
-                            <?php
-                            // Show up to 5 dots centered around current page
-                            $totalDots = min(5, $pagination['total_pages']);
-                            $startDot = max(1, min($currentPage - 2, $pagination['total_pages'] - $totalDots + 1));
-                            $endDot = min($pagination['total_pages'], $startDot + $totalDots - 1);
-                            for ($i = $startDot; $i <= $endDot; $i++):
-                                $isActive = $i === $currentPage;
-                                $isNear = abs($i - $currentPage) === 1;
-                            ?>
-                            <span class="pagination-dot <?= $isActive ? 'active' : ($isNear ? 'near' : '') ?>"></span>
-                            <?php endfor; ?>
-                        </div>
-                    </div>
-
-                    <a href="?id=<?= $lessonId ?>&page=<?= $pagination['next_page'] ?>"
-                       class="pagination-btn <?= !$pagination['has_next'] ? 'disabled' : '' ?>"
-                       <?= !$pagination['has_next'] ? 'aria-disabled="true" tabindex="-1"' : '' ?>
-                       aria-label="Next page">
-                        <span class="btn-text">Next</span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M9 18l6-6-6-6"/>
-                        </svg>
-                    </a>
-                </nav>
-                <?php endif; ?>
             <?php endif; ?>
         </main>
     </div>
