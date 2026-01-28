@@ -138,6 +138,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
+// Handle password change
+$passwordError = '';
+$passwordSuccess = false;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
+    if (!validateCsrfToken()) {
+        die('Invalid security token. Please try again.');
+    }
+    $currentPassword = $_POST['current_password'] ?? '';
+    $newPassword = $_POST['new_password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
+
+    $result = changeAdminPassword($currentPassword, $newPassword, $confirmPassword);
+    if ($result === true) {
+        header('Location: index.php?password_changed=1');
+        exit;
+    } else {
+        $passwordError = $result;
+    }
+}
+
 // Pagination settings
 $perPage = 10;
 
@@ -161,6 +181,7 @@ foreach ($classes as $class) {
 $successMessage = $_GET['saved'] ?? null ? 'Lesson saved successfully!' : null;
 $successMessage = $_GET['deleted'] ?? null ? 'Lesson deleted successfully!' : $successMessage;
 $successMessage = $_GET['updated'] ?? null ? 'Lesson updated successfully!' : $successMessage;
+$successMessage = $_GET['password_changed'] ?? null ? 'Password changed successfully!' : $successMessage;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -385,6 +406,40 @@ $successMessage = $_GET['updated'] ?? null ? 'Lesson updated successfully!' : $s
         .modal h3 { margin-bottom: 12px; color: #333; }
         .modal p { color: #666; margin-bottom: 20px; font-size: 0.95rem; }
         .modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
+        .modal .form-group { margin-bottom: 16px; }
+        .modal .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #444;
+            font-size: 0.9rem;
+        }
+        .modal .form-group input[type="password"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+        .modal .form-group input[type="password"]:focus {
+            outline: none;
+            border-color: #4a90a4;
+        }
+        .modal .form-hint {
+            display: block;
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        .modal-error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -393,6 +448,7 @@ $successMessage = $_GET['updated'] ?? null ? 'Lesson updated successfully!' : $s
             <h1>Teacher Dashboard</h1>
             <div class="header-links">
                 <a href="../index.php">Student Portal</a>
+                <a href="#" onclick="openPasswordModal(); return false;">Change Password</a>
                 <a href="?logout=1">Logout</a>
             </div>
         </header>
@@ -505,6 +561,36 @@ $successMessage = $_GET['updated'] ?? null ? 'Lesson updated successfully!' : $s
         </div>
     </div>
 
+    <div class="modal-overlay" id="passwordModal"<?= $passwordError ? ' style="display:flex"' : '' ?>>
+        <div class="modal" style="max-width: 420px;">
+            <h3>Change Password</h3>
+            <?php if ($passwordError): ?>
+            <div class="modal-error"><?= e($passwordError) ?></div>
+            <?php endif; ?>
+            <form method="POST" id="passwordForm">
+                <?= csrfField() ?>
+                <input type="hidden" name="action" value="change_password">
+                <div class="form-group">
+                    <label for="current_password">Current Password</label>
+                    <input type="password" id="current_password" name="current_password" required>
+                </div>
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" required minlength="8">
+                    <small class="form-hint">Minimum 8 characters</small>
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">Confirm New Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="closePasswordModal()">Cancel</button>
+                    <button type="submit" class="btn btn-sm btn-primary">Change Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         function confirmDelete(lessonId, date) {
             document.getElementById('deleteLessonId').value = lessonId;
@@ -518,6 +604,19 @@ $successMessage = $_GET['updated'] ?? null ? 'Lesson updated successfully!' : $s
 
         document.getElementById('deleteModal').addEventListener('click', function(e) {
             if (e.target === this) closeModal();
+        });
+
+        function openPasswordModal() {
+            document.getElementById('passwordModal').style.display = 'flex';
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordModal').style.display = 'none';
+            document.getElementById('passwordForm').reset();
+        }
+
+        document.getElementById('passwordModal').addEventListener('click', function(e) {
+            if (e.target === this) closePasswordModal();
         });
     </script>
 </body>

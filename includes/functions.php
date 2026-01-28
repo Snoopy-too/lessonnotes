@@ -142,18 +142,97 @@ function isAdminLoggedIn(): bool {
 }
 
 /**
- * Admin login
+ * Get admin password hash from database
+ */
+function getAdminPasswordHash(PDO $pdo): ?string {
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'admin_password'");
+        $stmt->execute();
+        $result = $stmt->fetchColumn();
+        return $result ?: null;
+    } catch (PDOException $e) {
+        // Table might not exist yet
+        return null;
+    }
+}
+
+/**
+ * Set admin password (stores hashed)
+ */
+function setAdminPassword(PDO $pdo, string $password): bool {
+    $hash = password_hash($password, PASSWORD_DEFAULT);
+    $stmt = $pdo->prepare("
+        INSERT INTO settings (setting_key, setting_value)
+        VALUES ('admin_password', ?)
+        ON DUPLICATE KEY UPDATE setting_value = ?, updated_at = CURRENT_TIMESTAMP
+    ");
+    return $stmt->execute([$hash, $hash]);
+}
+
+/**
+ * Admin login - uses database password with fallback to config constant for migration
  */
 function adminLogin(string $password): bool {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
 
-    if ($password === ADMIN_PASSWORD) {
-        $_SESSION['admin_logged_in'] = true;
+    $pdo = getDBConnection();
+    $storedHash = getAdminPasswordHash($pdo);
+
+    if ($storedHash !== null) {
+        // Use database password (hashed)
+        if (password_verify($password, $storedHash)) {
+            $_SESSION['admin_logged_in'] = true;
+            return true;
+        }
+    } else {
+        // Migration: check config constant and migrate to database
+        if ($password === ADMIN_PASSWORD) {
+            // Migrate password to database with hashing
+            setAdminPassword($pdo, $password);
+            $_SESSION['admin_logged_in'] = true;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Change admin password
+ * Returns: true on success, string error message on failure
+ */
+function changeAdminPassword(string $currentPassword, string $newPassword, string $confirmPassword): bool|string {
+    if (strlen($newPassword) < 8) {
+        return 'New password must be at least 8 characters long.';
+    }
+
+    if ($newPassword !== $confirmPassword) {
+        return 'New passwords do not match.';
+    }
+
+    $pdo = getDBConnection();
+    $storedHash = getAdminPasswordHash($pdo);
+
+    // Verify current password
+    if ($storedHash !== null) {
+        if (!password_verify($currentPassword, $storedHash)) {
+            return 'Current password is incorrect.';
+        }
+    } else {
+        // Check against config constant for unmigrated systems
+        if ($currentPassword !== ADMIN_PASSWORD) {
+            return 'Current password is incorrect.';
+        }
+    }
+
+    // Set new password
+    if (setAdminPassword($pdo, $newPassword)) {
         return true;
     }
-    return false;
+
+    return 'Failed to update password. Please try again.';
 }
 
 /**
