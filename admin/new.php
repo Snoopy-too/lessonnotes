@@ -221,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="form-group">
                         <label for="lesson_date">Date</label>
                         <input type="date" id="lesson_date" name="lesson_date"
-                               value="<?= e($_POST['lesson_date'] ?? date('Y-m-d')) ?>" required>
+                               value="<?= e($_POST['lesson_date'] ?? '') ?>" required>
                     </div>
                 </div>
 
@@ -257,5 +257,18 @@ Original: beautiful
             </div>
         </div>
     </div>
+    <script>
+        // Default to user's local date if not already set (e.g. from POST return)
+        window.addEventListener('load', () => {
+            const dateInput = document.getElementById('lesson_date');
+            if (!dateInput.value) {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                dateInput.value = `${year}-${month}-${day}`;
+            }
+        });
+    </script>
 </body>
 </html>

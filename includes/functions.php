@@ -3,6 +3,9 @@
  * Common helper functions
  */
 
+// Set default timezone for Japanese Eikaiwa
+date_default_timezone_set('Asia/Tokyo');
+
 /**
  * Get all classes
  */
