@@ -63,9 +63,11 @@ try {
 
     if ($checkClasses == 0) {
         $insertClasses = $pdo->prepare("INSERT INTO classes (class_name, slug) VALUES (?, ?)");
+        $insertClasses->execute(['Thursday 7 PM', 'thursday-7pm']);
         $insertClasses->execute(['Thursday 9 PM', 'thursday-9pm']);
         $insertClasses->execute(['Friday 10 AM', 'friday-10am']);
         $insertClasses->execute(['Saturday 2 PM', 'saturday-2pm']);
+        $insertClasses->execute(["Takayama's Class", 'takayamas-class']);
         echo "Inserted default classes.<br>";
     }
 

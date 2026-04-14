@@ -6,19 +6,21 @@ The Teacher (Admin): Needs a fast, "one-action" way to upload lesson notes.
 The Students: Need a mobile-friendly, simple way to review the specific translations from their class.
 3. Functional Requirements
 3.1 Class Structure
-The system must support three distinct classes:
+The system must support five distinct classes:
+Thursday 7 PM
 Thursday 9 PM
 Friday 10 AM
 Saturday 2 PM
+Takayama's Class (twice-weekly, not tied to a specific day/time)
 3.2 The Teacher Dashboard (Admin)
 Authentication: A simple password-protected login or a secure URL to prevent public access to the upload tool.
 Data Entry Form:
-Class Selection: A dropdown menu to select one of the three classes.
+Class Selection: A dropdown menu to select one of the five classes.
 Date Selection: A date picker (defaulting to the current date).
 Text Area: A large text box where the teacher pastes the lesson notes.
 Processing Engine: Upon clicking "Save," the app must parse the text (see Section 4) and save individual entries to the database linked to that class and date.
 3.3 Student Front-End
-Landing Page: Displays three large, clear buttons representing the three classes.
+Landing Page: Displays five large, clear buttons representing the five classes.
 Class Archive Page: When a class is selected, the app displays a list of buttons, each labeled with a date (e.g., "October 12, 2023") where lessons were recorded. Dates should be sorted with the most recent at the top.
 Lesson View Page: When a date is clicked, the app displays the full list of translations for that day in a clean, easy-to-read list format.
 4. Data Parsing Logic (Crucial)
@@ -74,7 +76,7 @@ Performance: The app should load quickly on Japanese mobile networks.
 Security: Sanitize all text inputs to prevent SQL injection.
 Reliability: The parser should be "forgiving" of extra spaces or accidental double line breaks in the pasted text.
 8. Acceptance Criteria
-Teacher can select "Thursday 9PM," paste 10 translations, and hit save.
+Teacher can select "Thursday 7PM" or other classes, paste 10 translations, and hit save.
 The system correctly identifies which line is "Original," which is "Translation," and which is "Romaji."
 The "Thursday 9PM" student page immediately shows a new button with today's date.
 Clicking that date displays the 10 translations in a clear, mobile-friendly list.

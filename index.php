@@ -204,6 +204,8 @@ $classes = getClasses($pdo);
         .class-btn:nth-child(1) { animation-delay: 0.3s; }
         .class-btn:nth-child(2) { animation-delay: 0.4s; }
         .class-btn:nth-child(3) { animation-delay: 0.5s; }
+        .class-btn:nth-child(4) { animation-delay: 0.6s; }
+        .class-btn:nth-child(5) { animation-delay: 0.7s; }
 
         @keyframes slideUp {
             from {
