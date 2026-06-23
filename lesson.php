@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Student Portal - Lesson View Page
  * View translations for a specific lesson date
@@ -344,6 +345,131 @@ $totalTranslations = count($translations);
                 font-size: 1.25rem;
             }
         }
+
+        /* Clickable word styling */
+        .clickable-word {
+            cursor: pointer;
+            border-bottom: 1px dashed var(--accent-indigo);
+            transition: all 0.2s ease;
+            display: inline;
+        }
+
+        .clickable-word:hover {
+            color: var(--accent-vermillion);
+            border-bottom: 1px solid var(--accent-vermillion);
+            background-color: rgba(199, 62, 58, 0.05);
+        }
+
+        /* Custom Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(26, 26, 26, 0.4);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            padding: 24px;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: var(--paper-white);
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(26, 26, 26, 0.15);
+            max-width: 400px;
+            width: 100%;
+            padding: 28px;
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border-top: 4px solid var(--accent-indigo);
+            position: relative;
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            font-family: 'Noto Sans JP', sans-serif;
+            font-size: 1.25rem;
+            color: var(--ink-black);
+            margin-bottom: 16px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        .modal-body {
+            font-size: 0.9375rem;
+            color: var(--ink-gray);
+            line-height: 1.6;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        .modal-body strong {
+            color: var(--accent-vermillion);
+            font-size: 1.05rem;
+            font-weight: 600;
+            padding: 0 2px;
+        }
+
+        .modal-body p {
+            margin-top: 12px;
+            font-size: 0.8125rem;
+            color: var(--ink-light);
+            border-top: 1px dashed var(--paper-warm);
+            padding-top: 12px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            outline: none;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+
+        .modal-btn-cancel {
+            background: var(--paper-cream);
+            color: var(--ink-gray);
+            border: 1px solid var(--paper-warm);
+        }
+
+        .modal-btn-cancel:hover {
+            background: var(--paper-warm);
+            color: var(--ink-black);
+        }
+
+        .modal-btn-confirm {
+            background: var(--accent-indigo);
+            color: white;
+        }
+
+        .modal-btn-confirm:hover {
+            background: #2b4566;
+        }
     </style>
 </head>
 <body>
@@ -422,6 +548,138 @@ $totalTranslations = count($translations);
 
         window.addEventListener('scroll', updateProgress, { passive: true });
         updateProgress();
+
+        // Clickable English words and dictionary lookup logic
+        document.addEventListener('DOMContentLoaded', () => {
+            const textElements = document.querySelectorAll('.original-text, .translated-text');
+            const jpRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF66-\uFF9F]/;
+
+            let currentWord = '';
+            let modalOverlay = null;
+
+            function createModal() {
+                if (modalOverlay) return;
+
+                modalOverlay = document.createElement('div');
+                modalOverlay.className = 'modal-overlay';
+
+                const content = document.createElement('div');
+                content.className = 'modal-content';
+
+                const title = document.createElement('h3');
+                title.className = 'modal-title';
+                title.textContent = 'Dictionary Lookup / 辞書で調べる';
+
+                const body = document.createElement('div');
+                body.className = 'modal-body';
+
+                const buttons = document.createElement('div');
+                buttons.className = 'modal-buttons';
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'modal-btn modal-btn-cancel';
+                cancelBtn.textContent = 'Cancel / キャンセル';
+                cancelBtn.addEventListener('click', hideModal);
+
+                const confirmBtn = document.createElement('button');
+                confirmBtn.className = 'modal-btn modal-btn-confirm';
+                confirmBtn.textContent = 'Look Up / 調べる';
+                confirmBtn.addEventListener('click', confirmLookup);
+
+                buttons.appendChild(cancelBtn);
+                buttons.appendChild(confirmBtn);
+
+                content.appendChild(title);
+                content.appendChild(body);
+                content.appendChild(buttons);
+                modalOverlay.appendChild(content);
+
+                modalOverlay.addEventListener('click', (e) => {
+                    if (e.target === modalOverlay) {
+                        hideModal();
+                    }
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && modalOverlay.classList.contains('active')) {
+                        hideModal();
+                    }
+                });
+
+                document.body.appendChild(modalOverlay);
+            }
+
+            function showLookupModal(word) {
+                createModal();
+                currentWord = word;
+
+                const body = modalOverlay.querySelector('.modal-body');
+                body.textContent = ''; // Clear content safely
+
+                const descText = document.createElement('div');
+                descText.appendChild(document.createTextNode('Would you like to look up '));
+                const strong = document.createElement('strong');
+                strong.textContent = word;
+                descText.appendChild(strong);
+                descText.appendChild(document.createTextNode(' in the Cambridge English-Japanese Dictionary?'));
+
+                const jpText = document.createElement('p');
+                jpText.textContent = `『${word}』を英和辞書（dictionary.cambridge.org）で調べますか？`;
+
+                body.appendChild(descText);
+                body.appendChild(jpText);
+
+                modalOverlay.style.display = 'flex';
+                // Force reflow
+                modalOverlay.offsetHeight;
+                modalOverlay.classList.add('active');
+            }
+
+            function hideModal() {
+                if (!modalOverlay) return;
+                modalOverlay.classList.remove('active');
+                setTimeout(() => {
+                    modalOverlay.style.display = 'none';
+                }, 200);
+            }
+
+            function confirmLookup() {
+                if (!currentWord) return;
+                const encodedWord = encodeURIComponent(currentWord.toLowerCase().replace(/['’]/g, ''));
+                const url = `https://dictionary.cambridge.org/dictionary/english-japanese/${encodedWord}`;
+                window.open(url, '_blank', 'noopener,noreferrer');
+                hideModal();
+            }
+
+            // Process text to make English words clickable
+            textElements.forEach(el => {
+                const text = el.textContent.trim();
+                if (text && !jpRegex.test(text)) {
+                    // Match English words (letters, apostrophes/curly apostrophes, hyphens)
+                    const tokens = text.split(/([a-zA-Z]+(?:['’][a-zA-Z]+)?(?:-[a-zA-Z]+)?)/);
+                    el.textContent = ''; // Clear text safely
+
+                    const fragment = document.createDocumentFragment();
+                    tokens.forEach(token => {
+                        if (!token) return;
+
+                        if (/^[a-zA-Z]+(?:['’][a-zA-Z]+)?(?:-[a-zA-Z]+)?$/.test(token)) {
+                            const span = document.createElement('span');
+                            span.className = 'clickable-word';
+                            span.textContent = token;
+                            span.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                showLookupModal(token);
+                            });
+                            fragment.appendChild(span);
+                        } else {
+                            fragment.appendChild(document.createTextNode(token));
+                        }
+                    });
+                    el.appendChild(fragment);
+                }
+            });
+        });
     </script>
 </body>
 </html>
