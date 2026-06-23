@@ -646,7 +646,7 @@ $totalTranslations = count($translations);
             function confirmLookup() {
                 if (!currentWord) return;
                 const encodedWord = encodeURIComponent(currentWord.toLowerCase().replace(/['’]/g, ''));
-                const url = `https://dictionary.cambridge.org/dictionary/english-japanese/${encodedWord}`;
+                const url = `https://dictionary.cambridge.org/search/direct/?datasetsearch=english-japanese&q=${encodedWord}`;
                 window.open(url, '_blank', 'noopener,noreferrer');
                 hideModal();
             }
