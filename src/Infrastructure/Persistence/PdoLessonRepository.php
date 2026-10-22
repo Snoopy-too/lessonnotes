@@ -12,7 +12,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * PDO implementation of LessonRepositoryInterface.
+ * PDO implementation of LessonRepositoryInterface with legacy table resilience.
  */
 class PdoLessonRepository implements LessonRepositoryInterface
 {
@@ -58,15 +58,16 @@ class PdoLessonRepository implements LessonRepositoryInterface
      */
     public function findByClassId(int $classId, int $limit = 50, int $offset = 0): array
     {
-        $sql = '
+        $transTable = $this->resolveTranslationsTable();
+        $sql = "
             SELECT l.*, COUNT(t.id) AS translation_count
             FROM `lessons` l
-            LEFT JOIN `translation_entries` t ON t.lesson_id = l.id
+            LEFT JOIN `{$transTable}` t ON t.lesson_id = l.id
             WHERE l.class_id = :class_id
             GROUP BY l.id
             ORDER BY l.lesson_date DESC, l.id DESC
             LIMIT :limit OFFSET :offset
-        ';
+        ";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->bindValue(':class_id', $classId, PDO::PARAM_INT);
@@ -99,45 +100,71 @@ class PdoLessonRepository implements LessonRepositoryInterface
 
         try {
             $lessonId = $lesson->getId();
+            $hasRawText = $this->lessonsHasRawText();
 
             if ($lessonId !== null && $lessonId > 0) {
-                // Update lesson
-                $stmt = $this->pdo->prepare('
-                    UPDATE `lessons`
-                    SET `class_id` = :class_id,
-                        `lesson_date` = :lesson_date,
-                        `raw_text` = :raw_text
-                    WHERE `id` = :id
-                ');
-                $stmt->execute([
-                    ':class_id' => $lesson->getClassId(),
-                    ':lesson_date' => $lesson->getLessonDate(),
-                    ':raw_text' => $lesson->getRawText(),
-                    ':id' => $lessonId,
-                ]);
+                if ($hasRawText) {
+                    $stmt = $this->pdo->prepare('
+                        UPDATE `lessons`
+                        SET `class_id` = :class_id,
+                            `lesson_date` = :lesson_date,
+                            `raw_text` = :raw_text
+                        WHERE `id` = :id
+                    ');
+                    $stmt->execute([
+                        ':class_id' => $lesson->getClassId(),
+                        ':lesson_date' => $lesson->getLessonDate(),
+                        ':raw_text' => $lesson->getRawText(),
+                        ':id' => $lessonId,
+                    ]);
+                } else {
+                    $stmt = $this->pdo->prepare('
+                        UPDATE `lessons`
+                        SET `class_id` = :class_id,
+                            `lesson_date` = :lesson_date
+                        WHERE `id` = :id
+                    ');
+                    $stmt->execute([
+                        ':class_id' => $lesson->getClassId(),
+                        ':lesson_date' => $lesson->getLessonDate(),
+                        ':id' => $lessonId,
+                    ]);
+                }
             } else {
-                // Insert lesson
-                $stmt = $this->pdo->prepare('
-                    INSERT INTO `lessons` (`class_id`, `lesson_date`, `raw_text`)
-                    VALUES (:class_id, :lesson_date, :raw_text)
-                ');
-                $stmt->execute([
-                    ':class_id' => $lesson->getClassId(),
-                    ':lesson_date' => $lesson->getLessonDate(),
-                    ':raw_text' => $lesson->getRawText(),
-                ]);
+                if ($hasRawText) {
+                    $stmt = $this->pdo->prepare('
+                        INSERT INTO `lessons` (`class_id`, `lesson_date`, `raw_text`)
+                        VALUES (:class_id, :lesson_date, :raw_text)
+                    ');
+                    $stmt->execute([
+                        ':class_id' => $lesson->getClassId(),
+                        ':lesson_date' => $lesson->getLessonDate(),
+                        ':raw_text' => $lesson->getRawText(),
+                    ]);
+                } else {
+                    $stmt = $this->pdo->prepare('
+                        INSERT INTO `lessons` (`class_id`, `lesson_date`)
+                        VALUES (:class_id, :lesson_date)
+                    ');
+                    $stmt->execute([
+                        ':class_id' => $lesson->getClassId(),
+                        ':lesson_date' => $lesson->getLessonDate(),
+                    ]);
+                }
                 $lessonId = (int)$this->pdo->lastInsertId();
             }
 
-            // Remove existing translations for this lesson
-            $deleteStmt = $this->pdo->prepare('DELETE FROM `translation_entries` WHERE `lesson_id` = ?');
-            $deleteStmt->execute([$lessonId]);
+            $transTable = $this->resolveTranslationsTable();
 
-            // Insert new translation entries
-            $insertStmt = $this->pdo->prepare('
-                INSERT INTO `translation_entries` (`lesson_id`, `original_text`, `translated_text`, `romaji_text`, `sort_order`)
+            // Delete existing translations
+            $delStmt = $this->pdo->prepare("DELETE FROM `{$transTable}` WHERE `lesson_id` = ?");
+            $delStmt->execute([$lessonId]);
+
+            // Insert new translations
+            $insertStmt = $this->pdo->prepare("
+                INSERT INTO `{$transTable}` (`lesson_id`, `original_text`, `translated_text`, `romaji_text`, `sort_order`)
                 VALUES (:lesson_id, :original_text, :translated_text, :romaji_text, :sort_order)
-            ');
+            ");
 
             $savedTranslations = [];
             foreach ($translations as $index => $entry) {
@@ -191,23 +218,25 @@ class PdoLessonRepository implements LessonRepositoryInterface
      */
     public function getTranslationsForLesson(int $lessonId, int $limit = 0, int $offset = 0): array
     {
+        $transTable = $this->resolveTranslationsTable();
+
         if ($limit > 0) {
-            $stmt = $this->pdo->prepare('
-                SELECT * FROM `translation_entries`
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM `{$transTable}`
                 WHERE `lesson_id` = :lesson_id
                 ORDER BY `sort_order` ASC, `id` ASC
                 LIMIT :limit OFFSET :offset
-            ');
+            ");
             $stmt->bindValue(':lesson_id', $lessonId, PDO::PARAM_INT);
             $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
             $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
             $stmt->execute();
         } else {
-            $stmt = $this->pdo->prepare('
-                SELECT * FROM `translation_entries`
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM `{$transTable}`
                 WHERE `lesson_id` = ?
                 ORDER BY `sort_order` ASC, `id` ASC
-            ');
+            ");
             $stmt->execute([$lessonId]);
         }
 
@@ -221,17 +250,19 @@ class PdoLessonRepository implements LessonRepositoryInterface
 
     public function countTranslationsForLesson(int $lessonId): int
     {
-        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM `translation_entries` WHERE `lesson_id` = ?');
+        $transTable = $this->resolveTranslationsTable();
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM `{$transTable}` WHERE `lesson_id` = ?");
         $stmt->execute([$lessonId]);
         return (int)$stmt->fetchColumn();
     }
 
     public function saveTranslation(TranslationEntry $entry): TranslationEntry
     {
-        $stmt = $this->pdo->prepare('
-            INSERT INTO `translation_entries` (`lesson_id`, `original_text`, `translated_text`, `romaji_text`, `sort_order`)
+        $transTable = $this->resolveTranslationsTable();
+        $stmt = $this->pdo->prepare("
+            INSERT INTO `{$transTable}` (`lesson_id`, `original_text`, `translated_text`, `romaji_text`, `sort_order`)
             VALUES (:lesson_id, :original_text, :translated_text, :romaji_text, :sort_order)
-        ');
+        ");
         $stmt->execute([
             ':lesson_id' => $entry->getLessonId(),
             ':original_text' => $entry->getOriginalText(),
@@ -252,14 +283,15 @@ class PdoLessonRepository implements LessonRepositoryInterface
 
     public function updateTranslation(TranslationEntry $entry): bool
     {
-        $stmt = $this->pdo->prepare('
-            UPDATE `translation_entries`
+        $transTable = $this->resolveTranslationsTable();
+        $stmt = $this->pdo->prepare("
+            UPDATE `{$transTable}`
             SET `original_text` = :original_text,
                 `translated_text` = :translated_text,
                 `romaji_text` = :romaji_text,
                 `sort_order` = :sort_order
             WHERE `id` = :id AND `lesson_id` = :lesson_id
-        ');
+        ");
         return $stmt->execute([
             ':original_text' => $entry->getOriginalText(),
             ':translated_text' => $entry->getTranslatedText(),
@@ -272,8 +304,29 @@ class PdoLessonRepository implements LessonRepositoryInterface
 
     public function deleteTranslation(int $translationId, int $lessonId): bool
     {
-        $stmt = $this->pdo->prepare('DELETE FROM `translation_entries` WHERE `id` = ? AND `lesson_id` = ?');
+        $transTable = $this->resolveTranslationsTable();
+        $stmt = $this->pdo->prepare("DELETE FROM `{$transTable}` WHERE `id` = ? AND `lesson_id` = ?");
         return $stmt->execute([$translationId, $lessonId]);
+    }
+
+    private function resolveTranslationsTable(): string
+    {
+        try {
+            $this->pdo->query('SELECT 1 FROM `translation_entries` LIMIT 1');
+            return 'translation_entries';
+        } catch (Throwable) {
+            return 'translations';
+        }
+    }
+
+    private function lessonsHasRawText(): bool
+    {
+        try {
+            $cols = $this->pdo->query("SHOW COLUMNS FROM `lessons` LIKE 'raw_text'")->fetchAll();
+            return !empty($cols);
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     private function mapRowToLesson(array $row): LessonRecord

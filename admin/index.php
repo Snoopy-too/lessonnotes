@@ -9,204 +9,248 @@ require_once __DIR__ . '/../src/bootstrap.php';
 
 use LessonNotes\Infrastructure\Security\SanitizeHelper;
 
-SanitizeHelper::sendSecurityHeaders();
-
-$container = appContainer();
-$authGuard = $container->getAuthGuard();
-$lessonRepository = $container->getLessonRepository();
-$classRepository = $container->getLessonClassRepository();
-
-function e(?string $text): string
-{
-    return SanitizeHelper::escape($text);
-}
-
-// Handle logout
-if (isset($_GET['logout'])) {
-    $authGuard->logout();
-    header('Location: index.php');
-    exit;
-}
-
-// Handle login
-$loginError = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password']) && !isset($_POST['action'])) {
-    if (!$authGuard->validateCsrfToken()) {
-        $loginError = 'Security validation failed. Please try again.';
-    } elseif ($authGuard->login((string)$_POST['password'])) {
-        header('Location: index.php');
-        exit;
-    } else {
-        $loginError = 'Invalid password. Please try again.';
+if (!function_exists('e')) {
+    function e(?string $text): string
+    {
+        return SanitizeHelper::escape($text);
     }
 }
 
-// Show login form if not authenticated
-if (!$authGuard->isLoggedIn()) {
+try {
+    SanitizeHelper::sendSecurityHeaders();
+
+    $container = appContainer();
+    $authGuard = $container->getAuthGuard();
+    $lessonRepository = $container->getLessonRepository();
+    $classRepository = $container->getLessonClassRepository();
+
+    // Handle logout
+    if (isset($_GET['logout'])) {
+        $authGuard->logout();
+        header('Location: index.php');
+        exit;
+    }
+
+    // Handle login
+    $loginError = '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password']) && !isset($_POST['action'])) {
+        if (!$authGuard->validateCsrfToken()) {
+            $loginError = 'Security validation failed. Please try again.';
+        } elseif ($authGuard->login((string)$_POST['password'])) {
+            header('Location: index.php');
+            exit;
+        } else {
+            $loginError = 'Invalid password. Please try again.';
+        }
+    }
+
+    // Show login form if not authenticated
+    if (!$authGuard->isLoggedIn()) {
+        ?>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Teacher Login - Eikaiwa Lesson Portal</title>
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: #f5f5f5;
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }
+                .login-card {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                    width: 100%;
+                    max-width: 400px;
+                }
+                h1 { font-size: 1.5rem; margin-bottom: 8px; color: #333; }
+                .subtitle { color: #666; margin-bottom: 30px; font-size: 0.9rem; }
+                .form-group { margin-bottom: 20px; }
+                label { display: block; font-weight: 500; margin-bottom: 8px; color: #444; }
+                input[type="password"] {
+                    width: 100%;
+                    padding: 12px 16px;
+                    border: 2px solid #e0e0e0;
+                    border-radius: 8px;
+                    font-size: 1rem;
+                    transition: border-color 0.2s;
+                }
+                input[type="password"]:focus { outline: none; border-color: #4a90a4; }
+                button {
+                    width: 100%;
+                    padding: 14px;
+                    background: #4a90a4;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+                button:hover { background: #3d7a8c; }
+                .error {
+                    background: #fee;
+                    color: #c00;
+                    padding: 12px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    font-size: 0.9rem;
+                }
+                .back-link {
+                    display: block;
+                    text-align: center;
+                    margin-top: 20px;
+                    color: #666;
+                    text-decoration: none;
+                    font-size: 0.9rem;
+                }
+                .back-link:hover { color: #4a90a4; }
+            </style>
+        </head>
+        <body>
+            <div class="login-card">
+                <h1>Teacher Dashboard</h1>
+                <p class="subtitle">Enter your password to manage lessons</p>
+                <?php if ($loginError): ?>
+                    <div class="error"><?= e($loginError) ?></div>
+                <?php endif; ?>
+                <form method="POST">
+                    <?= $authGuard->getCsrfField() ?>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required autofocus>
+                    </div>
+                    <button type="submit">Login</button>
+                </form>
+                <a href="../index.php" class="back-link">Back to Student Portal</a>
+            </div>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+
+    // Handle delete action
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
+        if (!$authGuard->validateCsrfToken()) {
+            die('Invalid security token. Please try again.');
+        }
+        $lessonId = (int)($_POST['lesson_id'] ?? 0);
+        if ($lessonId > 0) {
+            $lessonRepository->delete($lessonId);
+            header('Location: index.php?deleted=1');
+            exit;
+        }
+    }
+
+    // Handle password change
+    $passwordError = '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
+        if (!$authGuard->validateCsrfToken()) {
+            die('Invalid security token. Please try again.');
+        }
+        $currentPassword = (string)($_POST['current_password'] ?? '');
+        $newPassword = (string)($_POST['new_password'] ?? '');
+        $confirmPassword = (string)($_POST['confirm_password'] ?? '');
+
+        $result = $authGuard->changePassword($currentPassword, $newPassword, $confirmPassword);
+        if ($result === true) {
+            header('Location: index.php?password_changed=1');
+            exit;
+        } else {
+            $passwordError = $result;
+        }
+    }
+
+    // Pagination settings
+    $perPage = 10;
+    $classes = $classRepository->findAll();
+    $lessonsByClass = [];
+
+    foreach ($classes as $class) {
+        $classId = (int)$class->getId();
+        $pageKey = 'page_' . $classId;
+        $currentPage = max(1, (int)($_GET[$pageKey] ?? 1));
+        $totalLessons = $lessonRepository->countByClassId($classId);
+
+        $totalPages = max(1, (int)ceil($totalLessons / $perPage));
+        $currentPage = min($currentPage, $totalPages);
+        $offset = ($currentPage - 1) * $perPage;
+
+        $lessons = $lessonRepository->findByClassId($classId, $perPage, $offset);
+
+        $lessonsByClass[$classId] = [
+            'class' => $class,
+            'lessons' => $lessons,
+            'total_lessons' => $totalLessons,
+            'pagination' => [
+                'total_items' => $totalLessons,
+                'total_pages' => $totalPages,
+                'current_page' => $currentPage,
+                'per_page' => $perPage,
+                'has_prev' => $currentPage > 1,
+                'has_next' => $currentPage < $totalPages,
+                'prev_page' => $currentPage - 1,
+                'next_page' => $currentPage + 1,
+            ],
+        ];
+    }
+
+    $successMessage = isset($_GET['saved']) ? 'Lesson saved successfully!' : null;
+    $successMessage = isset($_GET['deleted']) ? 'Lesson deleted successfully!' : $successMessage;
+    $successMessage = isset($_GET['updated']) ? 'Lesson updated successfully!' : $successMessage;
+    $successMessage = isset($_GET['password_changed']) ? 'Password changed successfully!' : $successMessage;
+
+} catch (\Throwable $e) {
+    error_log('Admin Dashboard Exception: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+
+    if (isset($_GET['debug'])) {
+        echo "<div style='font-family:sans-serif;background:#fff0f0;color:#c00;padding:24px;border:2px solid #c00;border-radius:8px;max-width:800px;margin:40px auto;'>";
+        echo "<h2>System Diagnostic (Debug Mode)</h2>";
+        echo "<p><strong>Message:</strong> " . htmlspecialchars($e->getMessage()) . "</p>";
+        echo "<p><strong>File:</strong> " . htmlspecialchars($e->getFile()) . " (line " . $e->getLine() . ")</p>";
+        echo "<h3>Stack Trace:</h3><pre style='background:#fff;padding:12px;border:1px solid #ddd;overflow-x:auto;'>" . htmlspecialchars($e->getTraceAsString()) . "</pre>";
+        echo "</div>";
+        exit;
+    }
+
+    http_response_code(500);
     ?>
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Teacher Login - Eikaiwa Lesson Portal</title>
+        <title>Server Notice - Lesson Notes</title>
         <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #f5f5f5;
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }
-            .login-card {
-                background: white;
-                padding: 40px;
-                border-radius: 12px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-                width: 100%;
-                max-width: 400px;
-            }
-            h1 { font-size: 1.5rem; margin-bottom: 8px; color: #333; }
-            .subtitle { color: #666; margin-bottom: 30px; font-size: 0.9rem; }
-            .form-group { margin-bottom: 20px; }
-            label { display: block; font-weight: 500; margin-bottom: 8px; color: #444; }
-            input[type="password"] {
-                width: 100%;
-                padding: 12px 16px;
-                border: 2px solid #e0e0e0;
-                border-radius: 8px;
-                font-size: 1rem;
-                transition: border-color 0.2s;
-            }
-            input[type="password"]:focus { outline: none; border-color: #4a90a4; }
-            button {
-                width: 100%;
-                padding: 14px;
-                background: #4a90a4;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 1rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: background 0.2s;
-            }
-            button:hover { background: #3d7a8c; }
-            .error {
-                background: #fee;
-                color: #c00;
-                padding: 12px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                font-size: 0.9rem;
-            }
-            .back-link {
-                display: block;
-                text-align: center;
-                margin-top: 20px;
-                color: #666;
-                text-decoration: none;
-                font-size: 0.9rem;
-            }
-            .back-link:hover { color: #4a90a4; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #faf9f7; color: #333; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+            .card { background: white; padding: 36px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 480px; text-align: center; }
+            h2 { font-size: 1.4rem; color: #c73e3a; margin-bottom: 12px; }
+            p { color: #666; line-height: 1.6; margin-bottom: 24px; font-size: 0.95rem; }
+            .btn { display: inline-block; background: #3d5a80; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; }
         </style>
     </head>
     <body>
-        <div class="login-card">
-            <h1>Teacher Dashboard</h1>
-            <p class="subtitle">Enter your password to manage lessons</p>
-            <?php if ($loginError): ?>
-                <div class="error"><?= e($loginError) ?></div>
-            <?php endif; ?>
-            <form method="POST">
-                <?= $authGuard->getCsrfField() ?>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required autofocus>
-                </div>
-                <button type="submit">Login</button>
-            </form>
-            <a href="../index.php" class="back-link">Back to Student Portal</a>
+        <div class="card">
+            <h2>Temporary Server Notice</h2>
+            <p>The system is initializing database components. Please click below to refresh, or append <code>?debug=1</code> to view diagnostic details.</p>
+            <a href="index.php" class="btn">Retry Loading</a>
         </div>
     </body>
     </html>
     <?php
     exit;
 }
-
-// Handle delete action
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
-    if (!$authGuard->validateCsrfToken()) {
-        die('Invalid security token. Please try again.');
-    }
-    $lessonId = (int)($_POST['lesson_id'] ?? 0);
-    if ($lessonId > 0) {
-        $lessonRepository->delete($lessonId);
-        header('Location: index.php?deleted=1');
-        exit;
-    }
-}
-
-// Handle password change
-$passwordError = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
-    if (!$authGuard->validateCsrfToken()) {
-        die('Invalid security token. Please try again.');
-    }
-    $currentPassword = (string)($_POST['current_password'] ?? '');
-    $newPassword = (string)($_POST['new_password'] ?? '');
-    $confirmPassword = (string)($_POST['confirm_password'] ?? '');
-
-    $result = $authGuard->changePassword($currentPassword, $newPassword, $confirmPassword);
-    if ($result === true) {
-        header('Location: index.php?password_changed=1');
-        exit;
-    } else {
-        $passwordError = $result;
-    }
-}
-
-// Pagination settings
-$perPage = 10;
-$classes = $classRepository->findAll();
-$lessonsByClass = [];
-
-foreach ($classes as $class) {
-    $classId = (int)$class->getId();
-    $pageKey = 'page_' . $classId;
-    $currentPage = max(1, (int)($_GET[$pageKey] ?? 1));
-    $totalLessons = $lessonRepository->countByClassId($classId);
-
-    $totalPages = max(1, (int)ceil($totalLessons / $perPage));
-    $currentPage = min($currentPage, $totalPages);
-    $offset = ($currentPage - 1) * $perPage;
-
-    $lessons = $lessonRepository->findByClassId($classId, $perPage, $offset);
-
-    $lessonsByClass[$classId] = [
-        'class' => $class,
-        'lessons' => $lessons,
-        'total_lessons' => $totalLessons,
-        'pagination' => [
-            'total_items' => $totalLessons,
-            'total_pages' => $totalPages,
-            'current_page' => $currentPage,
-            'per_page' => $perPage,
-            'has_prev' => $currentPage > 1,
-            'has_next' => $currentPage < $totalPages,
-            'prev_page' => $currentPage - 1,
-            'next_page' => $currentPage + 1,
-        ],
-    ];
-}
-
-$successMessage = isset($_GET['saved']) ? 'Lesson saved successfully!' : null;
-$successMessage = isset($_GET['deleted']) ? 'Lesson deleted successfully!' : $successMessage;
-$successMessage = isset($_GET['updated']) ? 'Lesson updated successfully!' : $successMessage;
-$successMessage = isset($_GET['password_changed']) ? 'Password changed successfully!' : $successMessage;
 ?>
 <!DOCTYPE html>
 <html lang="en">

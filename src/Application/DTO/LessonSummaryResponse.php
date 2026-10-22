@@ -9,12 +9,12 @@ namespace LessonNotes\Application\DTO;
 class LessonSummaryResponse
 {
     public function __construct(
-        public readonly int $id,
-        public readonly int $classId,
-        public readonly string $lessonDate,
-        public readonly int $translationCount,
-        public readonly string $formattedDate,
-        public readonly string $formattedDateJapanese
+        public int $id,
+        public int $classId,
+        public string $lessonDate,
+        public int $translationCount,
+        public string $formattedDate,
+        public string $formattedDateJapanese
     ) {
     }
 }

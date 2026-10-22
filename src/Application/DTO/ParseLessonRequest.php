@@ -11,9 +11,9 @@ use InvalidArgumentException;
 class ParseLessonRequest
 {
     public function __construct(
-        public readonly int $classId,
-        public readonly string $lessonDate,
-        public readonly string $rawText
+        public int $classId,
+        public string $lessonDate,
+        public string $rawText
     ) {
         if ($this->classId <= 0) {
             throw new InvalidArgumentException('A valid class must be selected.');
