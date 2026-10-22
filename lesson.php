@@ -1,32 +1,45 @@
 <?php
 declare(strict_types=1);
+
 /**
  * Student Portal - Lesson View Page
  * View translations for a specific lesson date
  */
-require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/functions.php';
 
-$pdo = getDBConnection();
+require_once __DIR__ . '/src/bootstrap.php';
+
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
+
+SanitizeHelper::sendSecurityHeaders();
 
 $lessonId = (int)($_GET['id'] ?? 0);
-$lesson = getLessonById($pdo, $lessonId);
 
-if (!$lesson) {
+$container = appContainer();
+$useCase = $container->getGetLessonDetailUseCase();
+$data = $useCase->execute($lessonId);
+
+if ($data === null) {
     header('Location: index.php');
     exit;
 }
 
-// Get all translations for this lesson (no pagination)
-$translations = getTranslationsForLesson($pdo, $lessonId);
-$totalTranslations = count($translations);
+$lesson = $data['lesson'];
+$class = $data['class'];
+$translations = $data['translations'];
+$totalTranslations = $data['total_translations'];
+$formattedDate = $data['formatted_date'];
+
+function e(?string $text): string
+{
+    return SanitizeHelper::escape($text);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title><?= e(formatDate($lesson['lesson_date'])) ?> - <?= e($lesson['class_name']) ?></title>
+    <title><?= e($formattedDate) ?> - <?= e($class->getName()) ?></title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Noto+Sans+JP:wght@300;400;500&family=Noto+Serif+JP:wght@400;600&display=swap" rel="stylesheet">
@@ -477,7 +490,7 @@ $totalTranslations = count($translations);
 
     <div class="container">
         <header>
-            <a href="class.php?slug=<?= e($lesson['class_slug']) ?>" class="back-link">
+            <a href="class.php?slug=<?= e($class->getSlug()) ?>" class="back-link">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 12H5M12 19l-7-7 7-7"/>
                 </svg>
@@ -485,8 +498,8 @@ $totalTranslations = count($translations);
             </a>
 
             <div class="lesson-header">
-                <p class="class-name"><?= e($lesson['class_name']) ?></p>
-                <h1><?= e(formatDate($lesson['lesson_date'])) ?></h1>
+                <p class="class-name"><?= e($class->getName()) ?></p>
+                <h1><?= e($formattedDate) ?></h1>
                 <p class="translation-count"><?= $totalTranslations ?> translation<?= $totalTranslations !== 1 ? 's' : '' ?></p>
             </div>
         </header>
@@ -503,30 +516,29 @@ $totalTranslations = count($translations);
                 </div>
             <?php else: ?>
                 <div class="translation-list">
-                    <?php foreach ($translations as $index => $translation): ?>
+                    <?php foreach ($translations as $index => $entry): ?>
                     <article class="translation-card">
                         <span class="card-number"><?= $index + 1 ?></span>
 
                         <div class="original-section">
                             <p class="field-label">Original</p>
-                            <p class="original-text"><?= e($translation['original_text']) ?></p>
+                            <p class="original-text"><?= htmlspecialchars((string)$entry->getOriginalText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
                         </div>
 
                         <div class="translation-section">
                             <p class="field-label">Translation</p>
-                            <p class="translated-text"><?= e($translation['translated_text']) ?></p>
+                            <p class="translated-text"><?= htmlspecialchars((string)$entry->getTranslatedText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
                         </div>
 
-                        <?php if (!empty($translation['romaji_text'])): ?>
+                        <?php if ($entry->hasRomaji()): ?>
                         <div class="romaji-section">
                             <p class="field-label">Romaji</p>
-                            <p class="romaji-text"><?= e($translation['romaji_text']) ?></p>
+                            <p class="romaji-text"><?= htmlspecialchars((string)$entry->getRomajiText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
                         </div>
                         <?php endif; ?>
                     </article>
                     <?php endforeach; ?>
                 </div>
-
             <?php endif; ?>
         </main>
     </div>

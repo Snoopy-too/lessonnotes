@@ -1,41 +1,42 @@
 <?php
+declare(strict_types=1);
+
 /**
- * Database Configuration
+ * Database Configuration Example
  *
  * Copy this file to database.php and update with your credentials
  */
 
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'your_database_name');
-define('DB_USER', 'your_username');
-define('DB_PASS', 'your_password');
-define('DB_CHARSET', 'utf8mb4');
-
-/**
- * Get PDO database connection
- */
-function getDBConnection(): PDO {
-    static $pdo = null;
-
-    if ($pdo === null) {
-        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
-        $options = [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ];
-
-        try {
-            $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-        } catch (PDOException $e) {
-            die("Database connection failed: " . $e->getMessage());
-        }
-    }
-
-    return $pdo;
+if (!defined('DB_HOST')) {
+    define('DB_HOST', 'localhost');
+}
+if (!defined('DB_NAME')) {
+    define('DB_NAME', 'your_database_name');
+}
+if (!defined('DB_USER')) {
+    define('DB_USER', 'your_username');
+}
+if (!defined('DB_PASS')) {
+    define('DB_PASS', 'your_password');
+}
+if (!defined('DB_CHARSET')) {
+    define('DB_CHARSET', 'utf8mb4');
+}
+if (!defined('ADMIN_PASSWORD')) {
+    define('ADMIN_PASSWORD', 'change_this_password');
 }
 
 /**
- * Admin password - change this to a secure password
+ * Factory function for non-static PDO connection retrieval.
  */
-define('ADMIN_PASSWORD', 'change_this_password');
+function getDBConnection(): PDO
+{
+    require_once __DIR__ . '/../src/autoload.php';
+    return \LessonNotes\Infrastructure\Persistence\DatabaseConnection::create([
+        'host' => DB_HOST,
+        'dbname' => DB_NAME,
+        'user' => DB_USER,
+        'pass' => DB_PASS,
+        'charset' => DB_CHARSET,
+    ]);
+}

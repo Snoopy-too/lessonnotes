@@ -1,59 +1,66 @@
 <?php
+declare(strict_types=1);
+
 /**
  * Admin - New Lesson Entry
+ * Teacher upload interface powered by ParseAndSaveLessonUseCase
  */
 
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../includes/functions.php';
-require_once __DIR__ . '/../includes/LessonParser.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
-initSecureSession();
+use LessonNotes\Application\DTO\SaveLessonRequest;
+use LessonNotes\Domain\Services\ParseException;
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
 
-if (!isAdminLoggedIn()) {
-    header('Location: index.php');
-    exit;
-}
+SanitizeHelper::sendSecurityHeaders();
 
-$pdo = getDBConnection();
-$classes = getClasses($pdo);
+$container = appContainer();
+$authGuard = $container->getAuthGuard();
+$authGuard->requireLogin('index.php');
+
+$classRepository = $container->getLessonClassRepository();
+$classes = $classRepository->findAll();
 
 $errorMessage = '';
+$errorDetails = [];
 $preselectedClass = (int)($_GET['class'] ?? 0);
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!validateCsrfToken()) {
+    if (!$authGuard->validateCsrfToken()) {
         die('Invalid security token. Please try again.');
     }
+
     $classId = (int)($_POST['class_id'] ?? 0);
-    $lessonDate = $_POST['lesson_date'] ?? '';
-    $lessonText = $_POST['lesson_text'] ?? '';
+    $lessonDate = trim((string)($_POST['lesson_date'] ?? ''));
+    $lessonText = trim((string)($_POST['lesson_text'] ?? ''));
 
     if ($classId <= 0) {
         $errorMessage = 'Please select a class.';
-    } elseif (empty($lessonDate)) {
+    } elseif ($lessonDate === '') {
         $errorMessage = 'Please select a date.';
-    } elseif (empty(trim($lessonText))) {
+    } elseif ($lessonText === '') {
         $errorMessage = 'Please enter lesson notes.';
     } else {
         try {
-            $parser = new LessonParser();
-            $entries = $parser->parse($lessonText);
+            $request = new SaveLessonRequest($classId, $lessonDate, $lessonText);
+            $useCase = $container->getParseAndSaveLessonUseCase();
+            $useCase->execute($request);
 
-            if (empty($entries)) {
-                $errorMessage = 'Could not parse any translations from the text. Please check the format.';
-            } else {
-                $lessonId = getOrCreateLesson($pdo, $classId, $lessonDate);
-                deleteTranslationsForLesson($pdo, $lessonId);
-                $parser->saveEntries($pdo, $lessonId, $entries);
-
-                header('Location: index.php?saved=1');
-                exit;
-            }
-        } catch (Exception $e) {
+            header('Location: index.php?saved=1');
+            exit;
+        } catch (ParseException $e) {
+            $errorMessage = $e->getMessage();
+            $errorDetails = $e->getErrors();
+        } catch (Throwable $e) {
             $errorMessage = 'An error occurred: ' . $e->getMessage();
         }
     }
+}
+
+function e(?string $text): string
+{
+    return SanitizeHelper::escape($text);
 }
 ?>
 <!DOCTYPE html>
@@ -165,6 +172,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             border-radius: 8px;
             margin-bottom: 20px;
         }
+        .error-list {
+            margin-top: 8px;
+            padding-left: 20px;
+        }
+        .error-list li {
+            margin-bottom: 4px;
+            font-size: 0.9rem;
+        }
         .format-guide {
             background: #f8f9fa;
             border: 1px solid #e0e0e0;
@@ -201,19 +216,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <div class="card">
             <?php if ($errorMessage): ?>
-                <div class="error"><?= e($errorMessage) ?></div>
+                <div class="error">
+                    <strong><?= e($errorMessage) ?></strong>
+                    <?php if (!empty($errorDetails)): ?>
+                        <ul class="error-list">
+                            <?php foreach ($errorDetails as $err): ?>
+                                <li><?= e($err) ?></li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
 
             <form method="POST">
-                <?= csrfField() ?>
+                <?= $authGuard->getCsrfField() ?>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="class_id">Class</label>
                         <select id="class_id" name="class_id" required>
                             <option value="">Select a class...</option>
                             <?php foreach ($classes as $class): ?>
-                                <option value="<?= $class['id'] ?>" <?= ($preselectedClass == $class['id'] || (isset($_POST['class_id']) && $_POST['class_id'] == $class['id'])) ? 'selected' : '' ?>>
-                                    <?= e($class['class_name']) ?>
+                                <option value="<?= $class->getId() ?>" <?= ($preselectedClass === $class->getId() || (isset($_POST['class_id']) && (int)$_POST['class_id'] === $class->getId())) ? 'selected' : '' ?>>
+                                    <?= e($class->getName()) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -258,7 +282,7 @@ Original: beautiful
         </div>
     </div>
     <script>
-        // Default to user's local date if not already set (e.g. from POST return)
+        // Default to user's local date if not already set
         window.addEventListener('load', () => {
             const dateInput = document.getElementById('lesson_date');
             if (!dateInput.value) {

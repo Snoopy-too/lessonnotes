@@ -1,13 +1,25 @@
 <?php
+declare(strict_types=1);
+
 /**
  * Student Portal - Landing Page
  * Select your class
  */
-require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/functions.php';
 
-$pdo = getDBConnection();
-$classes = getClasses($pdo);
+require_once __DIR__ . '/src/bootstrap.php';
+
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
+
+SanitizeHelper::sendSecurityHeaders();
+
+$container = appContainer();
+$classRepository = $container->getLessonClassRepository();
+$classes = $classRepository->findAll();
+
+function e(?string $text): string
+{
+    return SanitizeHelper::escape($text);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -257,14 +269,6 @@ $classes = getClasses($pdo);
             gap: 12px;
         }
 
-        .class-day {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 0.875rem;
-            font-style: italic;
-            color: var(--ink-gray);
-            font-weight: 400;
-        }
-
         .class-arrow {
             margin-left: auto;
             width: 20px;
@@ -335,9 +339,9 @@ $classes = getClasses($pdo);
 
             <div class="class-list">
                 <?php foreach ($classes as $class): ?>
-                <a href="class.php?slug=<?= e($class['slug']) ?>" class="class-btn">
+                <a href="class.php?slug=<?= e($class->getSlug()) ?>" class="class-btn">
                     <div class="class-name">
-                        <span><?= e($class['class_name']) ?></span>
+                        <span><?= e($class->getName()) ?></span>
                         <span class="class-arrow">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M5 12h14M12 5l7 7-7 7"/>

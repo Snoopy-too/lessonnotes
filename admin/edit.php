@@ -1,144 +1,156 @@
 <?php
+declare(strict_types=1);
+
 /**
  * Admin - Edit Lesson
  */
 
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../includes/functions.php';
-require_once __DIR__ . '/../includes/LessonParser.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
-initSecureSession();
+use LessonNotes\Application\DTO\SaveLessonRequest;
+use LessonNotes\Domain\Entities\TranslationEntry;
+use LessonNotes\Domain\Services\ParseException;
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
 
-if (!isAdminLoggedIn()) {
-    header('Location: index.php');
-    exit;
+SanitizeHelper::sendSecurityHeaders();
+
+$container = appContainer();
+$authGuard = $container->getAuthGuard();
+$authGuard->requireLogin('index.php');
+
+$lessonRepository = $container->getLessonRepository();
+$classRepository = $container->getLessonClassRepository();
+
+function e(?string $text): string
+{
+    return SanitizeHelper::escape($text);
 }
 
-$pdo = getDBConnection();
-
 $lessonId = (int)($_GET['id'] ?? 0);
-$lesson = getLessonById($pdo, $lessonId);
+$lesson = $lessonRepository->findById($lessonId);
 
 if (!$lesson) {
     header('Location: index.php');
     exit;
 }
 
-// Pagination settings for individual edit view
+$class = $classRepository->findById($lesson->getClassId());
+$className = $class ? $class->getName() : 'Class';
+
 $perPage = 10;
 $currentPage = max(1, (int)($_GET['page'] ?? 1));
-$totalTranslations = countTranslationsForLesson($pdo, $lessonId);
-$pagination = getPaginationInfo($totalTranslations, $currentPage, $perPage);
-$currentPage = $pagination['current_page']; // Normalized
-
-// Get all translations for bulk edit textarea
-$allTranslations = getTranslationsForLesson($pdo, $lessonId);
-// Get paginated translations for individual edit view
-$translations = getPaginatedTranslationsForLesson($pdo, $lessonId, $currentPage, $perPage);
-
-// Calculate starting index for display
-$startIndex = ($currentPage - 1) * $perPage;
-
-$classes = getClasses($pdo);
+$totalTranslations = $lessonRepository->countTranslationsForLesson($lessonId);
+$totalPages = max(1, (int)ceil($totalTranslations / $perPage));
+$currentPage = min($currentPage, $totalPages);
+$offset = ($currentPage - 1) * $perPage;
 
 $errorMessage = '';
+$errorDetails = [];
 $successMessage = '';
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!validateCsrfToken()) {
+    if (!$authGuard->validateCsrfToken()) {
         die('Invalid security token. Please try again.');
     }
+
     $action = $_POST['action'] ?? 'update_all';
 
     if ($action === 'update_all') {
-        // Re-parse and replace all translations
-        $lessonText = $_POST['lesson_text'] ?? '';
+        $lessonText = trim((string)($_POST['lesson_text'] ?? ''));
 
-        if (empty(trim($lessonText))) {
+        if ($lessonText === '') {
             $errorMessage = 'Please enter lesson notes.';
         } else {
             try {
-                $parser = new LessonParser();
-                $entries = $parser->parse($lessonText);
+                $request = new SaveLessonRequest(
+                    $lesson->getClassId(),
+                    $lesson->getLessonDate(),
+                    $lessonText,
+                    $lessonId
+                );
+                $useCase = $container->getParseAndSaveLessonUseCase();
+                $useCase->execute($request);
 
-                if (empty($entries)) {
-                    $errorMessage = 'Could not parse any translations from the text.';
-                } else {
-                    deleteTranslationsForLesson($pdo, $lessonId);
-                    $parser->saveEntries($pdo, $lessonId, $entries);
-
-                    header('Location: index.php?updated=1');
-                    exit;
-                }
-            } catch (Exception $e) {
+                header('Location: index.php?updated=1');
+                exit;
+            } catch (ParseException $e) {
+                $errorMessage = $e->getMessage();
+                $errorDetails = $e->getErrors();
+            } catch (Throwable $e) {
                 $errorMessage = 'An error occurred: ' . $e->getMessage();
             }
         }
     } elseif ($action === 'update_single') {
-        // Update a single translation
         $translationId = (int)($_POST['translation_id'] ?? 0);
-        $originalText = trim($_POST['original_text'] ?? '');
-        $translatedText = trim($_POST['translated_text'] ?? '');
-        $romajiText = trim($_POST['romaji_text'] ?? '');
+        $originalText = trim((string)($_POST['original_text'] ?? ''));
+        $translatedText = trim((string)($_POST['translated_text'] ?? ''));
+        $romajiText = trim((string)($_POST['romaji_text'] ?? ''));
 
-        if ($translationId > 0 && !empty($originalText) && !empty($translatedText)) {
-            $stmt = $pdo->prepare("UPDATE translations SET original_text = ?, translated_text = ?, romaji_text = ? WHERE id = ? AND lesson_id = ?");
-            $stmt->execute([$originalText, $translatedText, $romajiText ?: null, $translationId, $lessonId]);
+        if ($translationId > 0 && $originalText !== '' && $translatedText !== '') {
+            $entry = new TranslationEntry(
+                $translationId,
+                $lessonId,
+                $originalText,
+                $translatedText,
+                $romajiText !== '' ? $romajiText : null
+            );
+            $lessonRepository->updateTranslation($entry);
             $successMessage = 'Translation updated!';
-            // Refresh translations
-            $totalTranslations = countTranslationsForLesson($pdo, $lessonId);
-            $pagination = getPaginationInfo($totalTranslations, $currentPage, $perPage);
-            $allTranslations = getTranslationsForLesson($pdo, $lessonId);
-            $translations = getPaginatedTranslationsForLesson($pdo, $lessonId, $pagination['current_page'], $perPage);
         }
     } elseif ($action === 'delete_single') {
-        // Delete a single translation
         $translationId = (int)($_POST['translation_id'] ?? 0);
         if ($translationId > 0) {
-            $stmt = $pdo->prepare("DELETE FROM translations WHERE id = ? AND lesson_id = ?");
-            $stmt->execute([$translationId, $lessonId]);
+            $lessonRepository->deleteTranslation($translationId, $lessonId);
             $successMessage = 'Translation deleted!';
-            // Refresh translations
-            $totalTranslations = countTranslationsForLesson($pdo, $lessonId);
-            $pagination = getPaginationInfo($totalTranslations, $currentPage, $perPage);
-            $allTranslations = getTranslationsForLesson($pdo, $lessonId);
-            $translations = getPaginatedTranslationsForLesson($pdo, $lessonId, $pagination['current_page'], $perPage);
         }
     } elseif ($action === 'add_single') {
-        // Add a new translation
-        $originalText = trim($_POST['original_text'] ?? '');
-        $translatedText = trim($_POST['translated_text'] ?? '');
-        $romajiText = trim($_POST['romaji_text'] ?? '');
+        $originalText = trim((string)($_POST['original_text'] ?? ''));
+        $translatedText = trim((string)($_POST['translated_text'] ?? ''));
+        $romajiText = trim((string)($_POST['romaji_text'] ?? ''));
 
-        if (!empty($originalText) && !empty($translatedText)) {
-            // Get max sort order
-            $maxOrder = $pdo->prepare("SELECT MAX(sort_order) FROM translations WHERE lesson_id = ?");
-            $maxOrder->execute([$lessonId]);
-            $nextOrder = ($maxOrder->fetchColumn() ?? 0) + 1;
-
-            $stmt = $pdo->prepare("INSERT INTO translations (lesson_id, original_text, translated_text, romaji_text, sort_order) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$lessonId, $originalText, $translatedText, $romajiText ?: null, $nextOrder]);
+        if ($originalText !== '' && $translatedText !== '') {
+            $nextOrder = $totalTranslations + 1;
+            $entry = new TranslationEntry(
+                null,
+                $lessonId,
+                $originalText,
+                $translatedText,
+                $romajiText !== '' ? $romajiText : null,
+                $nextOrder
+            );
+            $lessonRepository->saveTranslation($entry);
             $successMessage = 'Translation added!';
-            // Refresh translations
-            $totalTranslations = countTranslationsForLesson($pdo, $lessonId);
-            $pagination = getPaginationInfo($totalTranslations, $currentPage, $perPage);
-            $allTranslations = getTranslationsForLesson($pdo, $lessonId);
-            $translations = getPaginatedTranslationsForLesson($pdo, $lessonId, $pagination['current_page'], $perPage);
         }
     }
+
+    // Refresh translation metrics after mutations
+    $totalTranslations = $lessonRepository->countTranslationsForLesson($lessonId);
+    $totalPages = max(1, (int)ceil($totalTranslations / $perPage));
+    $currentPage = min($currentPage, $totalPages);
+    $offset = ($currentPage - 1) * $perPage;
 }
 
-// Convert existing translations back to paste format for the textarea
-$existingText = '';
-foreach ($allTranslations as $t) {
-    $existingText .= "Original: " . $t['original_text'] . "\n";
-    $existingText .= "(Jp): " . $t['translated_text'] . "\n";
-    if (!empty($t['romaji_text'])) {
-        $existingText .= "(Romaji): " . $t['romaji_text'] . "\n";
+$allTranslations = $lessonRepository->getTranslationsForLesson($lessonId);
+$translations = $lessonRepository->getTranslationsForLesson($lessonId, $perPage, $offset);
+$startIndex = ($currentPage - 1) * $perPage;
+
+// Use stored raw_text if present, or reconstruct
+$existingText = $lesson->getRawText();
+if (trim($existingText) === '') {
+    $blocks = [];
+    foreach ($allTranslations as $t) {
+        $block = "Original: " . $t->getOriginalText() . "\n";
+        $block .= "(Jp): " . $t->getTranslatedText();
+        if ($t->hasRomaji()) {
+            $block .= "\n(Romaji): " . $t->getRomajiText();
+        }
+        $blocks[] = $block;
     }
-    $existingText .= "\n";
+    $existingText = implode("\n\n-------\n\n", $blocks);
 }
+
+$formattedDate = date('F j, Y', strtotime($lesson->getLessonDate()));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -231,6 +243,14 @@ foreach ($allTranslations as $t) {
             border-radius: 8px;
             margin-bottom: 20px;
             font-size: 0.9rem;
+        }
+        .error-list {
+            margin-top: 8px;
+            padding-left: 20px;
+        }
+        .error-list li {
+            margin-bottom: 4px;
+            font-size: 0.85rem;
         }
 
         .form-group { margin-bottom: 16px; }
@@ -390,14 +410,23 @@ foreach ($allTranslations as $t) {
                 Back to Dashboard
             </a>
             <h1>Edit Lesson</h1>
-            <p class="lesson-meta"><?= e($lesson['class_name']) ?> &mdash; <?= e(formatDate($lesson['lesson_date'])) ?></p>
+            <p class="lesson-meta"><?= e($className) ?> &mdash; <?= e($formattedDate) ?></p>
         </header>
 
         <?php if ($successMessage): ?>
             <div class="success"><?= e($successMessage) ?></div>
         <?php endif; ?>
         <?php if ($errorMessage): ?>
-            <div class="error"><?= e($errorMessage) ?></div>
+            <div class="error">
+                <strong><?= e($errorMessage) ?></strong>
+                <?php if (!empty($errorDetails)): ?>
+                    <ul class="error-list">
+                        <?php foreach ($errorDetails as $err): ?>
+                            <li><?= e($err) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
 
         <div class="tabs">
@@ -414,24 +443,24 @@ foreach ($allTranslations as $t) {
             <?php else: ?>
                 <?php foreach ($translations as $index => $t): ?>
                 <form method="POST" class="translation-item">
-                    <?= csrfField() ?>
+                    <?= $authGuard->getCsrfField() ?>
                     <input type="hidden" name="action" value="update_single">
-                    <input type="hidden" name="translation_id" value="<?= $t['id'] ?>">
+                    <input type="hidden" name="translation_id" value="<?= $t->getId() ?>">
 
                     <div class="translation-number">#<?= $startIndex + $index + 1 ?></div>
 
                     <div class="translation-fields">
                         <div class="form-group" style="margin-bottom: 0;">
                             <label>Original</label>
-                            <input type="text" name="original_text" value="<?= e($t['original_text']) ?>" required>
+                            <input type="text" name="original_text" value="<?= e($t->getOriginalText()) ?>" required>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
                             <label>Translation</label>
-                            <input type="text" name="translated_text" value="<?= e($t['translated_text']) ?>" required>
+                            <input type="text" name="translated_text" value="<?= e($t->getTranslatedText()) ?>" required>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
                             <label>Romaji (optional)</label>
-                            <input type="text" name="romaji_text" value="<?= e($t['romaji_text'] ?? '') ?>">
+                            <input type="text" name="romaji_text" value="<?= e($t->getRomajiText() ?? '') ?>">
                         </div>
                     </div>
 
@@ -442,11 +471,11 @@ foreach ($allTranslations as $t) {
                 </form>
                 <?php endforeach; ?>
 
-                <?php if ($pagination['total_pages'] > 1): ?>
+                <?php if ($totalPages > 1): ?>
                 <nav class="pagination" aria-label="Translation navigation">
-                    <a href="?id=<?= $lessonId ?>&page=<?= $pagination['prev_page'] ?>"
-                       class="pagination-btn <?= !$pagination['has_prev'] ? 'disabled' : '' ?>"
-                       <?= !$pagination['has_prev'] ? 'aria-disabled="true" tabindex="-1"' : '' ?>
+                    <a href="?id=<?= $lessonId ?>&page=<?= max(1, $currentPage - 1) ?>"
+                       class="pagination-btn <?= $currentPage <= 1 ? 'disabled' : '' ?>"
+                       <?= $currentPage <= 1 ? 'aria-disabled="true" tabindex="-1"' : '' ?>
                        aria-label="Previous page">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M15 18l-6-6 6-6"/>
@@ -454,13 +483,13 @@ foreach ($allTranslations as $t) {
                     </a>
 
                     <span class="pagination-info">
-                        Page <span class="current"><?= $pagination['current_page'] ?></span> of <?= $pagination['total_pages'] ?>
+                        Page <span class="current"><?= $currentPage ?></span> of <?= $totalPages ?>
                         (<?= $totalTranslations ?> total)
                     </span>
 
-                    <a href="?id=<?= $lessonId ?>&page=<?= $pagination['next_page'] ?>"
-                       class="pagination-btn <?= !$pagination['has_next'] ? 'disabled' : '' ?>"
-                       <?= !$pagination['has_next'] ? 'aria-disabled="true" tabindex="-1"' : '' ?>
+                    <a href="?id=<?= $lessonId ?>&page=<?= min($totalPages, $currentPage + 1) ?>"
+                       class="pagination-btn <?= $currentPage >= $totalPages ? 'disabled' : '' ?>"
+                       <?= $currentPage >= $totalPages ? 'aria-disabled="true" tabindex="-1"' : '' ?>
                        aria-label="Next page">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M9 18l6-6-6-6"/>
@@ -472,18 +501,18 @@ foreach ($allTranslations as $t) {
 
             <!-- Add New Translation -->
             <form method="POST" class="add-section">
-                <?= csrfField() ?>
+                <?= $authGuard->getCsrfField() ?>
                 <h3>Add New Translation</h3>
                 <input type="hidden" name="action" value="add_single">
 
                 <div class="translation-fields">
                     <div class="form-group" style="margin-bottom: 0;">
                         <label>Original</label>
-                        <input type="text" name="original_text" placeholder="Enter original text...">
+                        <input type="text" name="original_text" placeholder="Enter original text..." required>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
                         <label>Translation</label>
-                        <input type="text" name="translated_text" placeholder="Enter translation...">
+                        <input type="text" name="translated_text" placeholder="Enter translation..." required>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
                         <label>Romaji (optional)</label>
@@ -501,7 +530,7 @@ foreach ($allTranslations as $t) {
         <div class="tab-content" id="tab-bulk">
             <div class="card">
                 <form method="POST">
-                    <?= csrfField() ?>
+                    <?= $authGuard->getCsrfField() ?>
                     <input type="hidden" name="action" value="update_all">
 
                     <div class="form-group">

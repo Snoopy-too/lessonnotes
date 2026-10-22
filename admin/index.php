@@ -1,17 +1,29 @@
 <?php
+declare(strict_types=1);
+
 /**
  * Admin Dashboard - Main Hub
  */
 
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../src/bootstrap.php';
 
-initSecureSession();
-$pdo = getDBConnection();
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
+
+SanitizeHelper::sendSecurityHeaders();
+
+$container = appContainer();
+$authGuard = $container->getAuthGuard();
+$lessonRepository = $container->getLessonRepository();
+$classRepository = $container->getLessonClassRepository();
+
+function e(?string $text): string
+{
+    return SanitizeHelper::escape($text);
+}
 
 // Handle logout
 if (isset($_GET['logout'])) {
-    adminLogout();
+    $authGuard->logout();
     header('Location: index.php');
     exit;
 }
@@ -19,7 +31,9 @@ if (isset($_GET['logout'])) {
 // Handle login
 $loginError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password']) && !isset($_POST['action'])) {
-    if (adminLogin($_POST['password'])) {
+    if (!$authGuard->validateCsrfToken()) {
+        $loginError = 'Security validation failed. Please try again.';
+    } elseif ($authGuard->login((string)$_POST['password'])) {
         header('Location: index.php');
         exit;
     } else {
@@ -27,9 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password']) && !isset
     }
 }
 
-// Check if logged in
-if (!isAdminLoggedIn()) {
-    // Show login form
+// Show login form if not authenticated
+if (!$authGuard->isLoggedIn()) {
     ?>
     <!DOCTYPE html>
     <html lang="en">
@@ -109,7 +122,7 @@ if (!isAdminLoggedIn()) {
                 <div class="error"><?= e($loginError) ?></div>
             <?php endif; ?>
             <form method="POST">
-                <?= csrfField() ?>
+                <?= $authGuard->getCsrfField() ?>
                 <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" name="password" required autofocus>
@@ -126,13 +139,12 @@ if (!isAdminLoggedIn()) {
 
 // Handle delete action
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
-    if (!validateCsrfToken()) {
+    if (!$authGuard->validateCsrfToken()) {
         die('Invalid security token. Please try again.');
     }
     $lessonId = (int)($_POST['lesson_id'] ?? 0);
     if ($lessonId > 0) {
-        $stmt = $pdo->prepare("DELETE FROM lessons WHERE id = ?");
-        $stmt->execute([$lessonId]);
+        $lessonRepository->delete($lessonId);
         header('Location: index.php?deleted=1');
         exit;
     }
@@ -140,16 +152,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Handle password change
 $passwordError = '';
-$passwordSuccess = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_password') {
-    if (!validateCsrfToken()) {
+    if (!$authGuard->validateCsrfToken()) {
         die('Invalid security token. Please try again.');
     }
-    $currentPassword = $_POST['current_password'] ?? '';
-    $newPassword = $_POST['new_password'] ?? '';
-    $confirmPassword = $_POST['confirm_password'] ?? '';
+    $currentPassword = (string)($_POST['current_password'] ?? '');
+    $newPassword = (string)($_POST['new_password'] ?? '');
+    $confirmPassword = (string)($_POST['confirm_password'] ?? '');
 
-    $result = changeAdminPassword($currentPassword, $newPassword, $confirmPassword);
+    $result = $authGuard->changePassword($currentPassword, $newPassword, $confirmPassword);
     if ($result === true) {
         header('Location: index.php?password_changed=1');
         exit;
@@ -160,28 +171,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // Pagination settings
 $perPage = 10;
-
-// Get all lessons grouped by class with pagination
-$classes = getClasses($pdo);
+$classes = $classRepository->findAll();
 $lessonsByClass = [];
-foreach ($classes as $class) {
-    $pageKey = 'page_' . $class['id'];
-    $currentPage = max(1, (int)($_GET[$pageKey] ?? 1));
-    $totalLessons = countLessonsForClass($pdo, $class['id']);
-    $pagination = getPaginationInfo($totalLessons, $currentPage, $perPage);
 
-    $lessonsByClass[$class['id']] = [
+foreach ($classes as $class) {
+    $classId = (int)$class->getId();
+    $pageKey = 'page_' . $classId;
+    $currentPage = max(1, (int)($_GET[$pageKey] ?? 1));
+    $totalLessons = $lessonRepository->countByClassId($classId);
+
+    $totalPages = max(1, (int)ceil($totalLessons / $perPage));
+    $currentPage = min($currentPage, $totalPages);
+    $offset = ($currentPage - 1) * $perPage;
+
+    $lessons = $lessonRepository->findByClassId($classId, $perPage, $offset);
+
+    $lessonsByClass[$classId] = [
         'class' => $class,
-        'lessons' => getPaginatedLessonsForClass($pdo, $class['id'], $pagination['current_page'], $perPage),
+        'lessons' => $lessons,
         'total_lessons' => $totalLessons,
-        'pagination' => $pagination
+        'pagination' => [
+            'total_items' => $totalLessons,
+            'total_pages' => $totalPages,
+            'current_page' => $currentPage,
+            'per_page' => $perPage,
+            'has_prev' => $currentPage > 1,
+            'has_next' => $currentPage < $totalPages,
+            'prev_page' => $currentPage - 1,
+            'next_page' => $currentPage + 1,
+        ],
     ];
 }
 
-$successMessage = $_GET['saved'] ?? null ? 'Lesson saved successfully!' : null;
-$successMessage = $_GET['deleted'] ?? null ? 'Lesson deleted successfully!' : $successMessage;
-$successMessage = $_GET['updated'] ?? null ? 'Lesson updated successfully!' : $successMessage;
-$successMessage = $_GET['password_changed'] ?? null ? 'Password changed successfully!' : $successMessage;
+$successMessage = isset($_GET['saved']) ? 'Lesson saved successfully!' : null;
+$successMessage = isset($_GET['deleted']) ? 'Lesson deleted successfully!' : $successMessage;
+$successMessage = isset($_GET['updated']) ? 'Lesson updated successfully!' : $successMessage;
+$successMessage = isset($_GET['password_changed']) ? 'Password changed successfully!' : $successMessage;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -474,41 +499,50 @@ $successMessage = $_GET['password_changed'] ?? null ? 'Password changed successf
         </div>
 
         <?php foreach ($lessonsByClass as $data): ?>
+        <?php
+            /** @var \LessonNotes\Domain\Entities\LessonClass $currentClass */
+            $currentClass = $data['class'];
+        ?>
         <div class="class-section">
             <div class="class-header">
-                <span class="class-title"><?= e($data['class']['class_name']) ?></span>
+                <span class="class-title"><?= e($currentClass->getName()) ?></span>
                 <span class="lesson-count"><?= $data['total_lessons'] ?> lesson<?= $data['total_lessons'] !== 1 ? 's' : '' ?></span>
             </div>
 
             <?php if (empty($data['lessons'])): ?>
             <div class="empty-state">
                 <p>No lessons recorded yet</p>
-                <a href="new.php?class=<?= $data['class']['id'] ?>" class="btn btn-secondary btn-sm">Add First Lesson</a>
+                <a href="new.php?class=<?= $currentClass->getId() ?>" class="btn btn-secondary btn-sm">Add First Lesson</a>
             </div>
             <?php else: ?>
             <div class="lesson-list">
-                <?php foreach ($data['lessons'] as $lesson): ?>
+                <?php foreach ($data['lessons'] as $item): ?>
+                <?php
+                    /** @var \LessonNotes\Domain\Entities\LessonRecord $lessonRecord */
+                    $lessonRecord = $item['lesson'];
+                    $tCount = $item['translation_count'];
+                    $formattedDate = date('F j, Y', strtotime($lessonRecord->getLessonDate()));
+                ?>
                 <div class="lesson-item">
                     <div class="lesson-info">
-                        <div class="lesson-date"><?= e(formatDate($lesson['lesson_date'])) ?></div>
-                        <div class="lesson-meta"><?= $lesson['translation_count'] ?> translation<?= $lesson['translation_count'] != 1 ? 's' : '' ?></div>
+                        <div class="lesson-date"><?= e($formattedDate) ?></div>
+                        <div class="lesson-meta"><?= $tCount ?> translation<?= $tCount !== 1 ? 's' : '' ?></div>
                     </div>
                     <div class="lesson-actions">
-                        <a href="../lesson.php?id=<?= $lesson['id'] ?>" class="btn btn-sm btn-view" target="_blank">View</a>
-                        <a href="edit.php?id=<?= $lesson['id'] ?>" class="btn btn-sm btn-secondary">Edit</a>
-                        <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete(<?= $lesson['id'] ?>, '<?= e(formatDate($lesson['lesson_date'])) ?>')">Delete</button>
+                        <a href="../lesson.php?id=<?= $lessonRecord->getId() ?>" class="btn btn-sm btn-view" target="_blank">View</a>
+                        <a href="edit.php?id=<?= $lessonRecord->getId() ?>" class="btn btn-sm btn-secondary">Edit</a>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="confirmDelete(<?= $lessonRecord->getId() ?>, '<?= e($formattedDate) ?>')">Delete</button>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
+
             <?php if ($data['pagination']['total_pages'] > 1): ?>
             <?php
-                // Build URL with all existing pagination params preserved
-                $classId = $data['class']['id'];
-                $pageKey = 'page_' . $classId;
+                $pageKey = 'page_' . $currentClass->getId();
                 $baseParams = $_GET;
             ?>
-            <nav class="pagination" aria-label="<?= e($data['class']['class_name']) ?> lesson navigation">
+            <nav class="pagination" aria-label="<?= e($currentClass->getName()) ?> lesson navigation">
                 <?php
                     $prevParams = $baseParams;
                     $prevParams[$pageKey] = $data['pagination']['prev_page'];
@@ -550,7 +584,7 @@ $successMessage = $_GET['password_changed'] ?? null ? 'Password changed successf
             <h3>Delete Lesson?</h3>
             <p>Are you sure you want to delete the lesson from <strong id="deleteDate"></strong>? This will remove all translations and cannot be undone.</p>
             <form method="POST" id="deleteForm">
-                <?= csrfField() ?>
+                <?= $authGuard->getCsrfField() ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="lesson_id" id="deleteLessonId">
                 <div class="modal-actions">
@@ -568,7 +602,7 @@ $successMessage = $_GET['password_changed'] ?? null ? 'Password changed successf
             <div class="modal-error"><?= e($passwordError) ?></div>
             <?php endif; ?>
             <form method="POST" id="passwordForm">
-                <?= csrfField() ?>
+                <?= $authGuard->getCsrfField() ?>
                 <input type="hidden" name="action" value="change_password">
                 <div class="form-group">
                     <label for="current_password">Current Password</label>

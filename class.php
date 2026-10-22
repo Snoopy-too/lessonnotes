@@ -1,35 +1,45 @@
 <?php
+declare(strict_types=1);
+
 /**
  * Student Portal - Class Archive Page
  * View all lesson dates for a class
  */
-require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/functions.php';
 
-$pdo = getDBConnection();
+require_once __DIR__ . '/src/bootstrap.php';
 
-$slug = $_GET['slug'] ?? '';
-$class = getClassBySlug($pdo, $slug);
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
 
-if (!$class) {
+SanitizeHelper::sendSecurityHeaders();
+
+$slug = (string)($_GET['slug'] ?? '');
+$page = max(1, (int)($_GET['page'] ?? 1));
+
+$container = appContainer();
+$useCase = $container->getGetClassLessonsUseCase();
+$data = $useCase->execute($slug, $page, 8);
+
+if ($data === null) {
     header('Location: index.php');
     exit;
 }
 
-// Pagination settings
-$perPage = 8;
-$currentPage = max(1, (int)($_GET['page'] ?? 1));
-$totalLessons = countLessonsForClass($pdo, $class['id']);
-$pagination = getPaginationInfo($totalLessons, $currentPage, $perPage);
-$currentPage = $pagination['current_page']; // Normalized
-$lessons = getPaginatedLessonsForClass($pdo, $class['id'], $currentPage, $perPage);
+$class = $data['class'];
+$lessons = $data['lessons'];
+$totalLessons = $data['total_lessons'];
+$pagination = $data['pagination'];
+
+function e(?string $text): string
+{
+    return SanitizeHelper::escape($text);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title><?= e($class['class_name']) ?> - Lesson Notes</title>
+    <title><?= e($class->getName()) ?> - Lesson Notes</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Noto+Sans+JP:wght@300;400;500&family=Noto+Serif+JP:wght@400;600&display=swap" rel="stylesheet">
@@ -367,7 +377,7 @@ $lessons = getPaginatedLessonsForClass($pdo, $class['id'], $currentPage, $perPag
             </a>
 
             <div class="class-header">
-                <h1><?= e($class['class_name']) ?></h1>
+                <h1><?= e($class->getName()) ?></h1>
                 <p class="lesson-count"><?= $totalLessons ?> lesson<?= $totalLessons !== 1 ? 's' : '' ?> recorded</p>
             </div>
         </header>
@@ -389,10 +399,10 @@ $lessons = getPaginatedLessonsForClass($pdo, $class['id'], $currentPage, $perPag
 
                 <div class="date-list">
                     <?php foreach ($lessons as $lesson): ?>
-                    <a href="lesson.php?id=<?= $lesson['id'] ?>" class="date-btn">
+                    <a href="lesson.php?id=<?= $lesson->id ?>" class="date-btn">
                         <div class="date-info">
-                            <div class="date-text"><?= e(formatDate($lesson['lesson_date'])) ?></div>
-                            <div class="entry-count"><?= $lesson['translation_count'] ?> translation<?= $lesson['translation_count'] !== 1 ? 's' : '' ?></div>
+                            <div class="date-text"><?= e($lesson->formattedDate) ?></div>
+                            <div class="entry-count"><?= $lesson->translationCount ?> translation<?= $lesson->translationCount !== 1 ? 's' : '' ?></div>
                         </div>
                         <svg class="date-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M5 12h14M12 5l7 7-7 7"/>

@@ -1,7 +1,12 @@
 <?php
+declare(strict_types=1);
 /**
  * Common helper functions
  */
+
+require_once __DIR__ . '/../src/autoload.php';
+
+use LessonNotes\Infrastructure\Security\SanitizeHelper;
 
 // Set default timezone for Japanese Eikaiwa
 date_default_timezone_set('Asia/Tokyo');
@@ -130,8 +135,8 @@ function formatDateJapanese(string $date): string {
 /**
  * Escape HTML output
  */
-function e(string $text): string {
-    return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+function e(?string $text): string {
+    return SanitizeHelper::escape($text);
 }
 
 /**
