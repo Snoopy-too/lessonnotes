@@ -5,17 +5,17 @@ namespace LessonNotes\Application\DTO;
 
 /**
  * Data Transfer Object for displaying lesson cards/items.
- * Modernized with PHP 8.5 asymmetric visibility.
+ * Cross-version compatible with PHP 8.2 - PHP 8.5+.
  */
 class LessonSummaryResponse
 {
     public function __construct(
-        public private(set) int $id,
-        public private(set) int $classId,
-        public private(set) string $lessonDate,
-        public private(set) int $translationCount,
-        public private(set) string $formattedDate,
-        public private(set) string $formattedDateJapanese
+        public int $id,
+        public int $classId,
+        public string $lessonDate,
+        public int $translationCount,
+        public string $formattedDate,
+        public string $formattedDateJapanese
     ) {
     }
 }

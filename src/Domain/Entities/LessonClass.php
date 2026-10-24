@@ -4,21 +4,22 @@ declare(strict_types=1);
 namespace LessonNotes\Domain\Entities;
 
 use DateTimeImmutable;
+use Error;
 use InvalidArgumentException;
 
 /**
  * Domain Entity representing an Eikaiwa class.
- * Modernized with PHP 8.5 asymmetric visibility & property hooks.
+ * Cross-version compatible with PHP 8.2 through PHP 8.5+.
  */
 final class LessonClass
 {
     public function __construct(
-        public private(set) ?int $id,
-        public private(set) string $name,
-        public private(set) string $slug,
-        public private(set) ?string $scheduleDay = null,
-        public private(set) ?string $scheduleTime = null,
-        public private(set) ?DateTimeImmutable $createdAt = null
+        private ?int $id,
+        private string $name,
+        private string $slug,
+        private ?string $scheduleDay = null,
+        private ?string $scheduleTime = null,
+        private ?DateTimeImmutable $createdAt = null
     ) {
         if (trim($this->name) === '') {
             throw new InvalidArgumentException('Class name cannot be empty.');
@@ -28,16 +29,30 @@ final class LessonClass
         }
     }
 
-    // Property hook for sanitized display name
-    public string $displayName {
-        get => htmlspecialchars($this->name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    /**
+     * Cross-version property hook and asymmetric visibility accessor.
+     * Enforces public read-only access for properties.
+     */
+    public function __get(string $property): mixed
+    {
+        return match ($property) {
+            'id' => $this->id,
+            'name' => $this->name,
+            'slug' => $this->slug,
+            'scheduleDay' => $this->scheduleDay,
+            'scheduleTime' => $this->scheduleTime,
+            'createdAt' => $this->createdAt,
+            'displayName' => htmlspecialchars($this->name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            'scheduleLabel' => ($this->scheduleDay !== null && $this->scheduleTime !== null)
+                ? $this->scheduleDay . ' ' . $this->scheduleTime
+                : $this->name,
+            default => throw new Error("Cannot access undefined property " . static::class . "::\${$property}"),
+        };
     }
 
-    // Property hook for schedule label
-    public string $scheduleLabel {
-        get => ($this->scheduleDay !== null && $this->scheduleTime !== null)
-            ? $this->scheduleDay . ' ' . $this->scheduleTime
-            : $this->name;
+    public function __isset(string $property): bool
+    {
+        return in_array($property, ['id', 'name', 'slug', 'scheduleDay', 'scheduleTime', 'createdAt', 'displayName', 'scheduleLabel'], true);
     }
 
     public function getId(): ?int
@@ -72,7 +87,10 @@ final class LessonClass
 
     public function getScheduleLabel(): string
     {
-        return $this->scheduleLabel;
+        if ($this->scheduleDay !== null && $this->scheduleTime !== null) {
+            return $this->scheduleDay . ' ' . $this->scheduleTime;
+        }
+        return $this->name;
     }
 
     /**

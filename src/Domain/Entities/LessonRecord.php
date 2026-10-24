@@ -4,11 +4,12 @@ declare(strict_types=1);
 namespace LessonNotes\Domain\Entities;
 
 use DateTimeImmutable;
+use Error;
 use InvalidArgumentException;
 
 /**
  * Domain Entity representing a lesson record on a specific date.
- * Modernized with PHP 8.5 asymmetric visibility & property hooks.
+ * Cross-version compatible with PHP 8.2 through PHP 8.5+.
  */
 final class LessonRecord
 {
@@ -16,11 +17,11 @@ final class LessonRecord
      * @param TranslationEntry[] $translationEntries
      */
     public function __construct(
-        public private(set) ?int $id,
-        public private(set) int $classId,
-        public private(set) string $lessonDate,
-        public private(set) string $rawText,
-        public private(set) ?DateTimeImmutable $createdAt = null,
+        private ?int $id,
+        private int $classId,
+        private string $lessonDate,
+        private string $rawText,
+        private ?DateTimeImmutable $createdAt = null,
         private array $translationEntries = []
     ) {
         if ($this->classId <= 0) {
@@ -31,9 +32,27 @@ final class LessonRecord
         }
     }
 
-    // Property hook for translation count
-    public int $translationCount {
-        get => count($this->translationEntries);
+    /**
+     * Cross-version property hook and asymmetric visibility accessor.
+     * Enforces public read-only access for properties.
+     */
+    public function __get(string $property): mixed
+    {
+        return match ($property) {
+            'id' => $this->id,
+            'classId' => $this->classId,
+            'lessonDate' => $this->lessonDate,
+            'rawText' => $this->rawText,
+            'createdAt' => $this->createdAt,
+            'translationEntries' => $this->translationEntries,
+            'translationCount' => count($this->translationEntries),
+            default => throw new Error("Cannot access undefined property " . static::class . "::\${$property}"),
+        };
+    }
+
+    public function __isset(string $property): bool
+    {
+        return in_array($property, ['id', 'classId', 'lessonDate', 'rawText', 'createdAt', 'translationEntries', 'translationCount'], true);
     }
 
     public function getId(): ?int
@@ -84,7 +103,7 @@ final class LessonRecord
 
     public function getTranslationCount(): int
     {
-        return $this->translationCount;
+        return count($this->translationEntries);
     }
 
     /**
@@ -105,7 +124,7 @@ final class LessonRecord
             'lesson_date' => $this->lessonDate,
             'raw_text' => $this->rawText,
             'created_at' => $this->createdAt?->format('Y-m-d H:i:s'),
-            'translation_count' => $this->translationCount,
+            'translation_count' => count($this->translationEntries),
         ];
     }
 }

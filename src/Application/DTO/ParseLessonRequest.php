@@ -7,14 +7,14 @@ use InvalidArgumentException;
 
 /**
  * Data Transfer Object for parsing lesson notes.
- * Modernized with PHP 8.5 asymmetric visibility.
+ * Cross-version compatible with PHP 8.2 - PHP 8.5+.
  */
 class ParseLessonRequest
 {
     public function __construct(
-        public private(set) int $classId,
-        public private(set) string $lessonDate,
-        public private(set) string $rawText
+        public int $classId,
+        public string $lessonDate,
+        public string $rawText
     ) {
         if ($this->classId <= 0) {
             throw new InvalidArgumentException('A valid class must be selected.');
