@@ -15,6 +15,24 @@ SanitizeHelper::sendSecurityHeaders();
 $container = appContainer();
 $classRepository = $container->getLessonClassRepository();
 $classes = $classRepository->findAll();
+$repoError = method_exists($classRepository, 'getLastError') ? $classRepository->getLastError() : null;
+
+$diagInfo = [
+    'php' => PHP_VERSION,
+    'classes_count' => count($classes),
+    'repo_error' => $repoError,
+];
+try {
+    $db = $container->getDb();
+    $diagInfo['db_status'] = 'connected';
+    $diagInfo['lesson_classes_table'] = (bool)$db->query("SHOW TABLES LIKE 'lesson_classes'")->fetchColumn();
+    $diagInfo['classes_table'] = (bool)$db->query("SHOW TABLES LIKE 'classes'")->fetchColumn();
+    if ($diagInfo['lesson_classes_table']) {
+        $diagInfo['lesson_classes_rows'] = (int)$db->query("SELECT COUNT(*) FROM `lesson_classes`")->fetchColumn();
+    }
+} catch (Throwable $e) {
+    $diagInfo['db_status'] = 'error: ' . $e->getMessage();
+}
 
 function e(?string $text): string
 {
@@ -24,6 +42,7 @@ function e(?string $text): string
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- DIAGNOSTIC: <?= htmlspecialchars(json_encode($diagInfo, JSON_PRETTY_PRINT), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Lesson Notes - Eikaiwa Portal</title>

@@ -16,9 +16,16 @@ use Throwable;
  */
 class PdoLessonClassRepository implements LessonClassRepositoryInterface
 {
+    private ?string $lastError = null;
+
     public function __construct(
         private PDO $pdo
     ) {
+    }
+
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
     }
 
     /**
@@ -34,7 +41,8 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
                 $classes[] = $this->mapRowToEntity($row);
             }
             return $classes;
-        } catch (Throwable) {
+        } catch (Throwable $e1) {
+            $this->lastError = 'lesson_classes query failed: ' . $e1->getMessage();
             try {
                 $stmt = $this->pdo->query('SELECT * FROM `classes` ORDER BY `id` ASC');
                 $classes = [];
@@ -42,8 +50,9 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
                     $classes[] = $this->mapRowToEntity($row);
                 }
                 return $classes;
-            } catch (Throwable $e) {
-                error_log('Failed to fetch classes: ' . $e->getMessage());
+            } catch (Throwable $e2) {
+                $this->lastError .= ' | classes query failed: ' . $e2->getMessage();
+                error_log('Failed to fetch classes: ' . $e2->getMessage());
                 return [];
             }
         }
