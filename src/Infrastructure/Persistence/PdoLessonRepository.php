@@ -7,12 +7,14 @@ use DateTimeImmutable;
 use LessonNotes\Domain\Entities\LessonRecord;
 use LessonNotes\Domain\Entities\TranslationEntry;
 use LessonNotes\Domain\Repositories\LessonRepositoryInterface;
+use Override;
 use PDO;
 use RuntimeException;
 use Throwable;
 
 /**
  * PDO implementation of LessonRepositoryInterface with legacy table resilience.
+ * Modernized with PHP 8.5 #[Override] attributes.
  */
 class PdoLessonRepository implements LessonRepositoryInterface
 {
@@ -21,6 +23,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
     ) {
     }
 
+    #[Override]
     public function findById(int $id): ?LessonRecord
     {
         $stmt = $this->pdo->prepare('SELECT * FROM `lessons` WHERE `id` = ?');
@@ -37,6 +40,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         return $lesson;
     }
 
+    #[Override]
     public function findByClassAndDate(int $classId, string $date): ?LessonRecord
     {
         $stmt = $this->pdo->prepare('SELECT * FROM `lessons` WHERE `class_id` = ? AND `lesson_date` = ?');
@@ -56,6 +60,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
     /**
      * @return array<int, array{lesson: LessonRecord, translation_count: int}>
      */
+    #[Override]
     public function findByClassId(int $classId, int $limit = 50, int $offset = 0): array
     {
         $transTable = $this->resolveTranslationsTable();
@@ -87,6 +92,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         return $results;
     }
 
+    #[Override]
     public function countByClassId(int $classId): int
     {
         $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM `lessons` WHERE `class_id` = ?');
@@ -94,6 +100,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         return (int)$stmt->fetchColumn();
     }
 
+    #[Override]
     public function save(LessonRecord $lesson, array $translations): LessonRecord
     {
         $this->pdo->beginTransaction();
@@ -207,6 +214,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         }
     }
 
+    #[Override]
     public function delete(int $id): bool
     {
         $stmt = $this->pdo->prepare('DELETE FROM `lessons` WHERE `id` = ?');
@@ -216,6 +224,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
     /**
      * @return TranslationEntry[]
      */
+    #[Override]
     public function getTranslationsForLesson(int $lessonId, int $limit = 0, int $offset = 0): array
     {
         $transTable = $this->resolveTranslationsTable();
@@ -248,6 +257,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         return $entries;
     }
 
+    #[Override]
     public function countTranslationsForLesson(int $lessonId): int
     {
         $transTable = $this->resolveTranslationsTable();
@@ -256,6 +266,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         return (int)$stmt->fetchColumn();
     }
 
+    #[Override]
     public function saveTranslation(TranslationEntry $entry): TranslationEntry
     {
         $transTable = $this->resolveTranslationsTable();
@@ -281,6 +292,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         );
     }
 
+    #[Override]
     public function updateTranslation(TranslationEntry $entry): bool
     {
         $transTable = $this->resolveTranslationsTable();
@@ -302,6 +314,7 @@ class PdoLessonRepository implements LessonRepositoryInterface
         ]);
     }
 
+    #[Override]
     public function deleteTranslation(int $translationId, int $lessonId): bool
     {
         $transTable = $this->resolveTranslationsTable();

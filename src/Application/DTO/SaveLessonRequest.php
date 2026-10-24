@@ -7,14 +7,15 @@ use InvalidArgumentException;
 
 /**
  * Data Transfer Object for saving a lesson and its translations.
+ * Modernized with PHP 8.5 asymmetric visibility.
  */
 class SaveLessonRequest
 {
     public function __construct(
-        public int $classId,
-        public string $lessonDate,
-        public string $rawText,
-        public ?int $lessonId = null
+        public private(set) int $classId,
+        public private(set) string $lessonDate,
+        public private(set) string $rawText,
+        public private(set) ?int $lessonId = null
     ) {
         if ($this->classId <= 0) {
             throw new InvalidArgumentException('A valid class must be selected.');

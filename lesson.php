@@ -522,18 +522,18 @@ function e(?string $text): string
 
                         <div class="original-section">
                             <p class="field-label">Original</p>
-                            <p class="original-text"><?= htmlspecialchars((string)$entry->getOriginalText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
+                            <p class="original-text"><?= $entry->displayOriginal ?></p>
                         </div>
 
                         <div class="translation-section">
                             <p class="field-label">Translation</p>
-                            <p class="translated-text"><?= htmlspecialchars((string)$entry->getTranslatedText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
+                            <p class="translated-text"><?= $entry->displayTranslated ?></p>
                         </div>
 
                         <?php if ($entry->hasRomaji()): ?>
                         <div class="romaji-section">
                             <p class="field-label">Romaji</p>
-                            <p class="romaji-text"><?= htmlspecialchars((string)$entry->getRomajiText(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
+                            <p class="romaji-text"><?= $entry->displayRomaji ?></p>
                         </div>
                         <?php endif; ?>
                     </article>

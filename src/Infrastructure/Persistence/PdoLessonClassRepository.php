@@ -6,11 +6,13 @@ namespace LessonNotes\Infrastructure\Persistence;
 use DateTimeImmutable;
 use LessonNotes\Domain\Entities\LessonClass;
 use LessonNotes\Domain\Repositories\LessonClassRepositoryInterface;
+use Override;
 use PDO;
 use Throwable;
 
 /**
  * PDO implementation of LessonClassRepositoryInterface with legacy table resilience.
+ * Modernized with PHP 8.5 #[Override] attributes.
  */
 class PdoLessonClassRepository implements LessonClassRepositoryInterface
 {
@@ -22,6 +24,7 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
     /**
      * @return LessonClass[]
      */
+    #[Override]
     public function findAll(): array
     {
         try {
@@ -46,6 +49,7 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
         }
     }
 
+    #[Override]
     public function findById(int $id): ?LessonClass
     {
         try {
@@ -65,6 +69,7 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
         }
     }
 
+    #[Override]
     public function findBySlug(string $slug): ?LessonClass
     {
         try {
@@ -84,6 +89,7 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
         }
     }
 
+    #[Override]
     public function save(LessonClass $lessonClass): LessonClass
     {
         $table = 'lesson_classes';
@@ -92,8 +98,6 @@ class PdoLessonClassRepository implements LessonClassRepositoryInterface
         } catch (Throwable) {
             $table = 'classes';
         }
-
-        $nameCol = $table === 'lesson_classes' ? 'name' : 'class_name';
 
         if ($lessonClass->getId() !== null) {
             if ($table === 'lesson_classes') {

@@ -1,4 +1,6 @@
 <?php
+declare(strict_types=1);
+
 /**
  * GitHub Webhook Deployment Script
  *
@@ -32,7 +34,8 @@ define('LOG_FILE', __DIR__ . '/deploy.log');
 /**
  * Write to log file
  */
-function writeLog($message) {
+function writeLog(string $message): void
+{
     $timestamp = date('Y-m-d H:i:s');
     file_put_contents(LOG_FILE, "[$timestamp] $message\n", FILE_APPEND | LOCK_EX);
 }
@@ -40,33 +43,34 @@ function writeLog($message) {
 /**
  * Get GitHub signature header (tries multiple methods for shared hosting compatibility)
  */
-function getGitHubSignature() {
+function getGitHubSignature(): string
+{
     // Method 1: Standard $_SERVER
     if (!empty($_SERVER['HTTP_X_HUB_SIGNATURE_256'])) {
-        return $_SERVER['HTTP_X_HUB_SIGNATURE_256'];
+        return (string)$_SERVER['HTTP_X_HUB_SIGNATURE_256'];
     }
 
     // Method 2: getallheaders() function
     if (function_exists('getallheaders')) {
         $headers = getallheaders();
         foreach ($headers as $name => $value) {
-            if (strtolower($name) === 'x-hub-signature-256') {
-                return $value;
+            if (strtolower((string)$name) === 'x-hub-signature-256') {
+                return (string)$value;
             }
         }
     }
 
     // Method 3: Check for Apache-style header
     if (!empty($_SERVER['REDIRECT_HTTP_X_HUB_SIGNATURE_256'])) {
-        return $_SERVER['REDIRECT_HTTP_X_HUB_SIGNATURE_256'];
+        return (string)$_SERVER['REDIRECT_HTTP_X_HUB_SIGNATURE_256'];
     }
 
     // Method 4: Check apache_request_headers
     if (function_exists('apache_request_headers')) {
         $headers = apache_request_headers();
         foreach ($headers as $name => $value) {
-            if (strtolower($name) === 'x-hub-signature-256') {
-                return $value;
+            if (strtolower((string)$name) === 'x-hub-signature-256') {
+                return (string)$value;
             }
         }
     }
@@ -77,7 +81,8 @@ function getGitHubSignature() {
 /**
  * Verify GitHub webhook signature
  */
-function verifySignature($payload, $signature) {
+function verifySignature(string $payload, string $signature): bool
+{
     if (empty($signature)) {
         writeLog('DEBUG: Signature is empty');
         return false;
@@ -98,8 +103,11 @@ function verifySignature($payload, $signature) {
 
 /**
  * Execute deployment
+ *
+ * @return array{success: bool, output: string, return_code: int}
  */
-function deploy() {
+function deploy(): array
+{
     $output = [];
     $return_var = 0;
 
@@ -116,7 +124,7 @@ function deploy() {
     return [
         'success' => $return_var === 0,
         'output' => implode("\n", $output),
-        'return_code' => $return_var
+        'return_code' => $return_var,
     ];
 }
 
@@ -131,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Get the payload and signature
-$payload = file_get_contents('php://input');
+$payload = (string)file_get_contents('php://input');
 $signature = getGitHubSignature();
 
 // Debug logging
@@ -147,7 +155,7 @@ if (!verifySignature($payload, $signature)) {
 
 // Parse the payload
 $data = json_decode($payload, true);
-if ($data === null) {
+if (!is_array($data)) {
     writeLog('ERROR: Invalid JSON payload');
     http_response_code(400);
     die('Invalid payload');
